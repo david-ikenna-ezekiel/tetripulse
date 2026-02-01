@@ -2,6 +2,9 @@
 
 Minimal, responsive Tetris-inspired game with themes, stages, and modern quality-of-life features.
 
+## Play online
+https://david-ikenna-ezekiel.github.io/tetripulse/
+
 ## Features
 - Ghost piece, hold queue, and next preview
 - Stage-based speed system with progress tracking

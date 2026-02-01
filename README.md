@@ -15,6 +15,13 @@ Desktop only for now. Touch-only devices are not supported yet.
 - High-score list stored locally
 - Optional sound effects toggle
 
+## Scoring labels
+- **Score**: Total points earned from clearing lines.
+- **Lines**: Total number of full rows cleared.
+- **Speed**: Current speed tier within the stage (1–3).
+- **Stage**: The current chapter of the run (e.g., Drift, Flow).
+- **Stage progress**: Visual bar showing progress through the current stage.
+
 ## Controls
 - ← / →: Move
 - ↑: Rotate

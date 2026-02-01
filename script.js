@@ -7,12 +7,15 @@ const holdCtx = holdCanvas.getContext("2d");
 
 const scoreEl = document.getElementById("score");
 const linesEl = document.getElementById("lines");
-const levelEl = document.getElementById("level");
-const highScoreEl = document.getElementById("highScore");
+const speedEl = document.getElementById("speed");
 const highScoreListEl = document.getElementById("highScoreList");
 const stageNameEl = document.getElementById("stageName");
-const stageProgressEl = document.getElementById("stageProgress");
-const stageSectionEl = document.getElementById("stageSection");
+const stageProgressFillEl = document.getElementById("stageProgressFill");
+const stageOverlay = document.getElementById("stageOverlay");
+const stageOverlayName = document.getElementById("stageOverlayName");
+const winOverlay = document.getElementById("winOverlay");
+const boardShell = document.getElementById("boardShell");
+const gameOverOverlay = document.getElementById("gameOverOverlay");
 const statusEl = document.getElementById("statusText");
 const toggleBtn = document.getElementById("toggleBtn");
 const resetBtn = document.getElementById("resetBtn");
@@ -88,6 +91,7 @@ let dropInterval = STAGES[0].speeds[0];
 let isPaused = true;
 let hasStarted = false;
 let isGameOver = false;
+let isWin = false;
 let score = 0;
 let lines = 0;
 let level = 1;
@@ -104,7 +108,8 @@ let themeTokens = {
   boardBg: "#fefdfb",
   previewBg: "#faf9f6",
   gridLine: "rgba(0, 0, 0, 0.05)",
-  ghostAlpha: 0.25,
+  ghostAlpha: 0.12,
+  wireframe: false,
 };
 
 function createMatrix(width, height) {
@@ -125,7 +130,8 @@ function updateThemeTokens() {
     boardBg: readCssVar("--board-bg", "#fefdfb"),
     previewBg: readCssVar("--preview-bg", "#faf9f6"),
     gridLine: readCssVar("--grid-line", "rgba(0, 0, 0, 0.05)"),
-    ghostAlpha: Number.parseFloat(readCssVar("--ghost-alpha", "0.25")) || 0.25,
+    ghostAlpha: Number.parseFloat(readCssVar("--ghost-alpha", "0.12")) || 0.12,
+    wireframe: readCssVar("--wireframe", "0") === "1",
   };
 
   COLORS = {
@@ -198,8 +204,6 @@ function saveHighScores(scores) {
 }
 
 function renderHighScores() {
-  const displayHigh = Math.max(score, highScores[0] || 0);
-  highScoreEl.textContent = displayHigh.toString();
   highScoreListEl.innerHTML = "";
 
   if (highScores.length === 0) {
@@ -217,22 +221,45 @@ function renderHighScores() {
   });
 }
 
+function updateGameOverUI(gameOver) {
+  boardShell.classList.toggle("game-over", gameOver);
+  gameOverOverlay.setAttribute("aria-hidden", gameOver ? "false" : "true");
+}
+
+function updateWinUI(win) {
+  boardShell.classList.toggle("win", win);
+  winOverlay.setAttribute("aria-hidden", win ? "false" : "true");
+}
+
 function getStage() {
   return STAGES[Math.min(stageIndex, STAGES.length - 1)];
 }
 
-function formatStageProgress(stage, current) {
-  if (stage.lineGoal === Number.POSITIVE_INFINITY) {
-    return `${current} / ∞`;
-  }
-  return `${current} / ${stage.lineGoal}`;
+flashStageOverlay.timer = null;
+
+function flashStageOverlay(name) {
+  stageOverlayName.textContent = name;
+  stageOverlay.setAttribute("aria-hidden", "false");
+  boardShell.classList.add("stage-flash");
+
+  window.clearTimeout(flashStageOverlay.timer);
+  flashStageOverlay.timer = window.setTimeout(() => {
+    boardShell.classList.remove("stage-flash");
+    stageOverlay.setAttribute("aria-hidden", "true");
+  }, 1200);
 }
 
 function updateStageUI() {
   const stage = getStage();
   stageNameEl.textContent = stage.name;
-  stageProgressEl.textContent = formatStageProgress(stage, stageLines);
-  stageSectionEl.textContent = `${stageSection + 1} / ${stage.speeds.length}`;
+
+  let progressRatio = 0;
+  if (stage.lineGoal === Number.POSITIVE_INFINITY) {
+    progressRatio = (stageLines % 10) / 10;
+  } else {
+    progressRatio = Math.min(1, stageLines / stage.lineGoal);
+  }
+  stageProgressFillEl.style.width = `${Math.round(progressRatio * 100)}%`;
 }
 
 function updateStageProgress(cleared) {
@@ -241,6 +268,7 @@ function updateStageProgress(cleared) {
   stageLines += cleared;
   let stage = getStage();
 
+  let stageChanged = false;
   while (
     stage.lineGoal !== Number.POSITIVE_INFINITY &&
     stageLines >= stage.lineGoal
@@ -249,24 +277,42 @@ function updateStageProgress(cleared) {
     stageIndex = Math.min(stageIndex + 1, STAGES.length - 1);
     stageSection = 0;
     stage = getStage();
+    stageChanged = true;
     if (stage.lineGoal === Number.POSITIVE_INFINITY) {
       stageLines = 0;
       break;
     }
   }
 
-  const sectionSize =
-    stage.lineGoal === Number.POSITIVE_INFINITY
-      ? 10
-      : Math.ceil(stage.lineGoal / stage.speeds.length);
-  stageSection = Math.min(
-    stage.speeds.length - 1,
-    Math.floor(stageLines / sectionSize)
-  );
+  if (
+    stage.lineGoal === Number.POSITIVE_INFINITY &&
+    stageLines >= 40 &&
+    !isWin
+  ) {
+    isWin = true;
+    isPaused = true;
+    statusEl.textContent = "You Won!!";
+    toggleBtn.textContent = "Restart";
+    updateWinUI(true);
+  }
 
-  dropInterval = stage.speeds[stageSection];
-  level = stageIndex + 1;
-  updateStageUI();
+  if (!isWin) {
+    const sectionSize =
+      stage.lineGoal === Number.POSITIVE_INFINITY
+        ? 10
+        : Math.ceil(stage.lineGoal / stage.speeds.length);
+    stageSection = Math.min(
+      stage.speeds.length - 1,
+      Math.floor(stageLines / sectionSize)
+    );
+
+    dropInterval = stage.speeds[stageSection];
+    level = stageIndex + 1;
+    updateStageUI();
+    if (stageChanged) {
+      flashStageOverlay(stage.name);
+    }
+  }
 }
 
 function recordScore(value) {
@@ -386,6 +432,7 @@ function resetPlayer() {
     isPaused = true;
     statusEl.textContent = "Game Over";
     toggleBtn.textContent = "Restart";
+    updateGameOverUI(true);
     playSound("gameover");
     recordScore(score);
   }
@@ -526,6 +573,7 @@ function holdSwap() {
     isPaused = true;
     statusEl.textContent = "Game Over";
     toggleBtn.textContent = "Restart";
+    updateGameOverUI(true);
     playSound("gameover");
     recordScore(score);
   }
@@ -534,7 +582,7 @@ function holdSwap() {
 function updateStats() {
   scoreEl.textContent = score.toString();
   linesEl.textContent = lines.toString();
-  levelEl.textContent = level.toString();
+  speedEl.textContent = (stageSection + 1).toString();
   renderHighScores();
   updateStageUI();
 }
@@ -543,8 +591,14 @@ function drawMatrix(matrix, offset, context) {
   matrix.forEach((row, y) => {
     row.forEach((value, x) => {
       if (value !== 0) {
-        context.fillStyle = COLORS[value];
-        context.fillRect(x + offset.x, y + offset.y, 1, 1);
+        if (themeTokens.wireframe) {
+          context.strokeStyle = COLORS[value];
+          context.lineWidth = 0.08;
+          context.strokeRect(x + offset.x, y + offset.y, 1, 1);
+        } else {
+          context.fillStyle = COLORS[value];
+          context.fillRect(x + offset.x, y + offset.y, 1, 1);
+        }
       }
     });
   });
@@ -618,7 +672,7 @@ function update(time = 0) {
   const delta = time - lastTime;
   lastTime = time;
 
-  if (!isPaused && !isGameOver) {
+  if (!isPaused && !isGameOver && !isWin) {
     dropCounter += delta;
     if (dropCounter > dropInterval) {
       playerDrop();
@@ -630,7 +684,7 @@ function update(time = 0) {
 }
 
 function togglePause() {
-  if (isGameOver) {
+  if (isGameOver || isWin) {
     resetGame();
   }
   hasStarted = true;
@@ -653,10 +707,13 @@ function resetGame() {
   level = 1;
   dropInterval = STAGES[0].speeds[0];
   isGameOver = false;
+  isWin = false;
   isPaused = false;
   hasStarted = true;
   holdPiece = null;
   holdUsed = false;
+  updateGameOverUI(false);
+  updateWinUI(false);
   statusEl.textContent = "Playing";
   toggleBtn.textContent = "Pause";
   updateStats();
@@ -722,7 +779,7 @@ document.addEventListener("keydown", (event) => {
     holdSwap();
   }
 
-  if (isPaused || isGameOver) return;
+  if (isPaused || isGameOver || isWin) return;
 
   if (event.code === "ArrowLeft") {
     playerMove(-1);

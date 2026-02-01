@@ -3,7 +3,7 @@
 Minimal, responsive Tetris-inspired game with themes, stages, and modern quality-of-life features.
 
 ## Play online
-https://david-ikenna-ezekiel.github.io/tetripulse/
+[Play TetriPulse](https://david-ikenna-ezekiel.github.io/tetripulse/)
 
 ## Support note
 Desktop only for now. Touch-only devices are not supported yet.

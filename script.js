@@ -12,7 +12,9 @@ const highScoreListEl = document.getElementById("highScoreList");
 const stageNameEl = document.getElementById("stageName");
 const stageProgressFillEl = document.getElementById("stageProgressFill");
 const stageOverlay = document.getElementById("stageOverlay");
+const stageOverlayEyebrow = document.getElementById("stageOverlayEyebrow");
 const stageOverlayName = document.getElementById("stageOverlayName");
+const stageOverlaySub = document.getElementById("stageOverlaySub");
 const winOverlay = document.getElementById("winOverlay");
 const boardShell = document.getElementById("boardShell");
 const gameOverOverlay = document.getElementById("gameOverOverlay");
@@ -21,6 +23,7 @@ const toggleBtn = document.getElementById("toggleBtn");
 const resetBtn = document.getElementById("resetBtn");
 const soundBtn = document.getElementById("soundBtn");
 const themeSelect = document.getElementById("themeSelect");
+const themeAutoToggle = document.getElementById("themeAuto");
 
 const COLS = 10;
 const ROWS = 20;
@@ -68,10 +71,20 @@ const SHAPES = {
 };
 
 const bag = [];
+const ZOO_ANIMALS = [
+  "lion",
+  "tiger",
+  "elephant",
+  "panda",
+  "giraffe",
+  "zebra",
+  "rabbit",
+];
 
 const lineScores = [0, 40, 100, 300, 1200];
 const HIGH_SCORE_KEY = "tetripulse_high_scores";
 const THEME_KEY = "tetripulse_theme";
+const THEME_MODE_KEY = "tetripulse_theme_mode";
 const STAGES = [
   { name: "Drift", lineGoal: 8, speeds: [800, 650, 520] },
   { name: "Flow", lineGoal: 10, speeds: [720, 580, 460] },
@@ -81,6 +94,16 @@ const STAGES = [
   { name: "Focus", lineGoal: 18, speeds: [480, 360, 280] },
   { name: "Clarity", lineGoal: 20, speeds: [420, 320, 240] },
   { name: "Endless", lineGoal: Number.POSITIVE_INFINITY, speeds: [360, 280, 200] },
+];
+const STAGE_THEMES = [
+  "minimal",
+  "ocean",
+  "noir",
+  "neon",
+  "canyon",
+  "wireframe",
+  "ember",
+  "zoo",
 ];
 
 let board = createMatrix(COLS, ROWS);
@@ -104,6 +127,9 @@ let audioCtx = null;
 let stageIndex = 0;
 let stageLines = 0;
 let stageSection = 0;
+let themeDirty = false;
+let themeMode = "auto";
+let stageTransition = false;
 let themeTokens = {
   boardBg: "#fefdfb",
   previewBg: "#faf9f6",
@@ -120,18 +146,68 @@ function cloneMatrix(matrix) {
   return matrix.map((row) => row.slice());
 }
 
+function randomAnimal() {
+  return ZOO_ANIMALS[Math.floor(Math.random() * ZOO_ANIMALS.length)];
+}
+
 function readCssVar(name, fallback) {
   const value = getComputedStyle(document.body).getPropertyValue(name).trim();
   return value || fallback;
 }
 
+function parseColorToRgb(color) {
+  if (!color) return { r: 0, g: 0, b: 0 };
+
+  if (color.startsWith("#")) {
+    let hex = color.slice(1);
+    if (hex.length === 3) {
+      hex = hex
+        .split("")
+        .map((char) => char + char)
+        .join("");
+    }
+    const int = Number.parseInt(hex, 16);
+    return {
+      r: (int >> 16) & 255,
+      g: (int >> 8) & 255,
+      b: int & 255,
+    };
+  }
+
+  if (color.startsWith("rgb")) {
+    const parts = color
+      .replace(/rgba?\(/, "")
+      .replace(")", "")
+      .split(",")
+      .map((value) => Number.parseFloat(value.trim()));
+    return { r: parts[0] || 0, g: parts[1] || 0, b: parts[2] || 0 };
+  }
+
+  return { r: 0, g: 0, b: 0 };
+}
+
+function mixColors(colorA, colorB, amount) {
+  return {
+    r: Math.round(colorA.r + (colorB.r - colorA.r) * amount),
+    g: Math.round(colorA.g + (colorB.g - colorA.g) * amount),
+    b: Math.round(colorA.b + (colorB.b - colorA.b) * amount),
+  };
+}
+
+function toRgba(color, alpha) {
+  return `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha})`;
+}
+
 function updateThemeTokens() {
+  const themeName = document.body.dataset.theme || "minimal";
   themeTokens = {
     boardBg: readCssVar("--board-bg", "#fefdfb"),
     previewBg: readCssVar("--preview-bg", "#faf9f6"),
     gridLine: readCssVar("--grid-line", "rgba(0, 0, 0, 0.05)"),
     ghostAlpha: Number.parseFloat(readCssVar("--ghost-alpha", "0.12")) || 0.12,
-    wireframe: readCssVar("--wireframe", "0") === "1",
+    wireframe: themeName === "wireframe",
+    water: themeName === "ocean",
+    zoo: themeName === "zoo",
   };
 
   COLORS = {
@@ -148,8 +224,25 @@ function updateThemeTokens() {
 function applyTheme(themeName) {
   document.body.dataset.theme = themeName;
   localStorage.setItem(THEME_KEY, themeName);
-  updateThemeTokens();
-  draw();
+  themeSelect.value = themeName;
+  themeDirty = true;
+}
+
+function themeForStage(index) {
+  return STAGE_THEMES[Math.min(index, STAGE_THEMES.length - 1)] || "minimal";
+}
+
+function setThemeMode(mode) {
+  themeMode = mode;
+  localStorage.setItem(THEME_MODE_KEY, mode);
+  themeAutoToggle.checked = mode === "auto";
+  themeSelect.disabled = mode === "auto";
+
+  if (mode === "auto") {
+    applyTheme(themeForStage(stageIndex));
+  } else {
+    applyTheme(themeSelect.value || "minimal");
+  }
 }
 
 function configureCanvas(canvasEl, context, width, height, scale) {
@@ -235,18 +328,52 @@ function getStage() {
   return STAGES[Math.min(stageIndex, STAGES.length - 1)];
 }
 
-flashStageOverlay.timer = null;
-
-function flashStageOverlay(name) {
+function showStageOverlay(eyebrow, name, subline) {
+  stageOverlayEyebrow.textContent = eyebrow;
   stageOverlayName.textContent = name;
+  stageOverlaySub.textContent = subline;
   stageOverlay.setAttribute("aria-hidden", "false");
   boardShell.classList.add("stage-flash");
+}
 
-  window.clearTimeout(flashStageOverlay.timer);
-  flashStageOverlay.timer = window.setTimeout(() => {
-    boardShell.classList.remove("stage-flash");
-    stageOverlay.setAttribute("aria-hidden", "true");
-  }, 1200);
+function hideStageOverlay() {
+  boardShell.classList.remove("stage-flash");
+  stageOverlay.setAttribute("aria-hidden", "true");
+}
+
+function startStageTransition(prevStage, nextStage) {
+  if (isGameOver || isWin) return;
+
+  if (themeMode === "auto") {
+    applyTheme(themeForStage(stageIndex));
+  }
+
+  stageTransition = true;
+  isPaused = true;
+  statusEl.textContent = "Stage cleared";
+  toggleBtn.textContent = "Resume";
+
+  board = createMatrix(COLS, ROWS);
+  player = createPlayer();
+  holdPiece = null;
+  holdUsed = false;
+  dropCounter = 0;
+
+  showStageOverlay(
+    `${prevStage} cleared`,
+    "Next stage is ready",
+    `Press Space to play ${nextStage}`
+  );
+  playSound("stage");
+}
+
+function endStageTransition() {
+  if (isGameOver || isWin) return;
+  stageTransition = false;
+  isPaused = false;
+  statusEl.textContent = "Playing";
+  toggleBtn.textContent = "Pause";
+  hideStageOverlay();
 }
 
 function updateStageUI() {
@@ -267,6 +394,7 @@ function updateStageProgress(cleared) {
 
   stageLines += cleared;
   let stage = getStage();
+  const prevStageName = stage.name;
 
   let stageChanged = false;
   while (
@@ -282,6 +410,16 @@ function updateStageProgress(cleared) {
       stageLines = 0;
       break;
     }
+  }
+
+  if (stageChanged) {
+    stageLines = 0;
+    stageSection = 0;
+    dropInterval = stage.speeds[0];
+    level = stageIndex + 1;
+    updateStageUI();
+    startStageTransition(prevStageName, stage.name);
+    return;
   }
 
   if (
@@ -310,7 +448,7 @@ function updateStageProgress(cleared) {
     level = stageIndex + 1;
     updateStageUI();
     if (stageChanged) {
-      flashStageOverlay(stage.name);
+      startStageTransition(prevStageName, stage.name);
     }
   }
 }
@@ -387,6 +525,12 @@ function playSound(type) {
     case "gameover":
       playTone(140, 0.2, "sine", 0.07);
       break;
+    case "stage":
+      playTone(480, 0.12, "triangle", 0.05);
+      window.setTimeout(() => {
+        playTone(660, 0.12, "triangle", 0.04);
+      }, 90);
+      break;
     default:
       break;
   }
@@ -401,9 +545,12 @@ function setSoundEnabled(enabled) {
 }
 
 function createPlayer() {
+  const current = randomPiece();
   return {
     pos: { x: 0, y: 0 },
-    matrix: randomPiece(),
+    matrix: cloneMatrix(current.matrix),
+    type: current.type,
+    animal: current.animal,
     next: randomPiece(),
   };
 }
@@ -417,11 +564,17 @@ function randomPiece() {
     }
   }
   const key = bag.pop();
-  return SHAPES[key].map((row) => row.slice());
+  return {
+    type: key,
+    matrix: SHAPES[key].map((row) => row.slice()),
+    animal: randomAnimal(),
+  };
 }
 
 function resetPlayer() {
-  player.matrix = player.next;
+  player.matrix = cloneMatrix(player.next.matrix);
+  player.type = player.next.type;
+  player.animal = player.next.animal;
   player.next = randomPiece();
   player.pos.y = 0;
   player.pos.x = Math.floor((COLS - player.matrix[0].length) / 2);
@@ -457,7 +610,10 @@ function merge(arena, playerState) {
   playerState.matrix.forEach((row, y) => {
     row.forEach((value, x) => {
       if (value !== 0) {
-        arena[y + playerState.pos.y][x + playerState.pos.x] = value;
+        arena[y + playerState.pos.y][x + playerState.pos.x] = {
+          type: playerState.type,
+          animal: playerState.animal,
+        };
       }
     });
   });
@@ -549,17 +705,25 @@ function playerMove(dir) {
 }
 
 function holdSwap() {
-  if (holdUsed || isPaused || isGameOver) {
+  if (holdUsed || isPaused || isGameOver || isWin || stageTransition) {
     return;
   }
 
-  const current = cloneMatrix(player.matrix);
+  const current = {
+    matrix: cloneMatrix(player.matrix),
+    type: player.type,
+    animal: player.animal,
+  };
   if (!holdPiece) {
     holdPiece = current;
-    player.matrix = player.next;
+    player.matrix = cloneMatrix(player.next.matrix);
+    player.type = player.next.type;
+    player.animal = player.next.animal;
     player.next = randomPiece();
   } else {
-    player.matrix = holdPiece;
+    player.matrix = cloneMatrix(holdPiece.matrix);
+    player.type = holdPiece.type;
+    player.animal = holdPiece.animal;
     holdPiece = current;
   }
 
@@ -587,17 +751,200 @@ function updateStats() {
   updateStageUI();
 }
 
-function drawMatrix(matrix, offset, context) {
+function getWaterGradient(color, context, x, y) {
+  const base = parseColorToRgb(color);
+  const light = mixColors(base, { r: 255, g: 255, b: 255 }, 0.35);
+  const deep = mixColors(base, { r: 0, g: 60, b: 80 }, 0.25);
+  const gradient = context.createLinearGradient(x, y, x + 1, y + 1);
+  gradient.addColorStop(0, toRgba(light, 0.95));
+  gradient.addColorStop(0.5, toRgba(base, 0.9));
+  gradient.addColorStop(1, toRgba(deep, 0.9));
+  return gradient;
+}
+
+function drawPawPrint(context, x, y, color) {
+  const base = parseColorToRgb(color);
+  const dark = mixColors(base, { r: 0, g: 0, b: 0 }, 0.35);
+  const paw = toRgba(dark, 0.35);
+
+  const toeR = 0.06;
+  const padR = 0.13;
+  const toes = [
+    { x: x + 0.28, y: y + 0.32 },
+    { x: x + 0.45, y: y + 0.22 },
+    { x: x + 0.55, y: y + 0.22 },
+    { x: x + 0.72, y: y + 0.32 },
+  ];
+
+  context.fillStyle = paw;
+  toes.forEach((toe) => {
+    context.beginPath();
+    context.arc(toe.x, toe.y, toeR, 0, Math.PI * 2);
+    context.fill();
+  });
+
+  context.beginPath();
+  context.arc(x + 0.5, y + 0.62, padR, 0, Math.PI * 2);
+  context.fill();
+}
+
+function drawAnimalFace(context, x, y, animal, color) {
+  const base = parseColorToRgb(color);
+  const dark = mixColors(base, { r: 0, g: 0, b: 0 }, 0.45);
+  const stroke = toRgba(dark, 0.7);
+  const fill = toRgba(dark, 0.4);
+
+  const drawEyes = () => {
+    context.fillStyle = stroke;
+    context.beginPath();
+    context.arc(x + 0.35, y + 0.45, 0.05, 0, Math.PI * 2);
+    context.arc(x + 0.65, y + 0.45, 0.05, 0, Math.PI * 2);
+    context.fill();
+  };
+
+  const drawNose = () => {
+    context.fillStyle = stroke;
+    context.beginPath();
+    context.arc(x + 0.5, y + 0.6, 0.045, 0, Math.PI * 2);
+    context.fill();
+  };
+
+  context.save();
+  context.lineWidth = 0.06;
+  context.strokeStyle = stroke;
+
+  switch (animal) {
+    case "lion":
+      context.beginPath();
+      context.arc(x + 0.5, y + 0.5, 0.42, 0, Math.PI * 2);
+      context.stroke();
+      drawEyes();
+      drawNose();
+      break;
+    case "tiger":
+      for (let i = -1; i <= 1; i += 1) {
+        context.beginPath();
+        context.moveTo(x + 0.28 + i * 0.12, y + 0.2);
+        context.lineTo(x + 0.38 + i * 0.12, y + 0.35);
+        context.stroke();
+      }
+      drawEyes();
+      drawNose();
+      break;
+    case "elephant":
+      context.beginPath();
+      context.arc(x + 0.22, y + 0.5, 0.18, 0.6 * Math.PI, 1.4 * Math.PI);
+      context.arc(x + 0.78, y + 0.5, 0.18, -0.4 * Math.PI, 0.4 * Math.PI);
+      context.stroke();
+      context.beginPath();
+      context.moveTo(x + 0.5, y + 0.55);
+      context.lineTo(x + 0.5, y + 0.8);
+      context.stroke();
+      drawEyes();
+      break;
+    case "panda":
+      context.fillStyle = fill;
+      context.beginPath();
+      context.ellipse(x + 0.35, y + 0.45, 0.12, 0.1, 0, 0, Math.PI * 2);
+      context.ellipse(x + 0.65, y + 0.45, 0.12, 0.1, 0, 0, Math.PI * 2);
+      context.fill();
+      drawEyes();
+      drawNose();
+      break;
+    case "giraffe":
+      context.fillStyle = fill;
+      [
+        { dx: 0.32, dy: 0.3 },
+        { dx: 0.7, dy: 0.35 },
+        { dx: 0.45, dy: 0.65 },
+        { dx: 0.68, dy: 0.7 },
+      ].forEach((spot) => {
+        context.beginPath();
+        context.arc(x + spot.dx, y + spot.dy, 0.06, 0, Math.PI * 2);
+        context.fill();
+      });
+      drawEyes();
+      drawNose();
+      break;
+    case "zebra":
+      for (let i = 0; i < 4; i += 1) {
+        context.beginPath();
+        context.moveTo(x + 0.22 + i * 0.16, y + 0.2);
+        context.lineTo(x + 0.12 + i * 0.16, y + 0.8);
+        context.stroke();
+      }
+      drawEyes();
+      drawNose();
+      break;
+    case "rabbit":
+      context.beginPath();
+      context.ellipse(x + 0.38, y + 0.18, 0.08, 0.18, 0, 0, Math.PI * 2);
+      context.ellipse(x + 0.62, y + 0.18, 0.08, 0.18, 0, 0, Math.PI * 2);
+      context.stroke();
+      drawEyes();
+      drawNose();
+      break;
+    default:
+      drawEyes();
+      drawNose();
+      break;
+  }
+
+  context.restore();
+}
+
+function drawBorder(context, x, y, color) {
+  const base = parseColorToRgb(color);
+  const dark = mixColors(base, { r: 0, g: 0, b: 0 }, 0.35);
+  const stroke = toRgba(dark, 0.22);
+
+  context.save();
+  context.strokeStyle = stroke;
+  context.lineWidth = 0.03;
+  context.strokeRect(x + 0.04, y + 0.04, 0.92, 0.92);
+  context.restore();
+}
+
+function resolveCell(value, fallbackAnimal) {
+  if (!value) return null;
+  if (typeof value === "string") {
+    return { type: value, animal: fallbackAnimal };
+  }
+  if (value.type) {
+    return value;
+  }
+  return null;
+}
+
+function drawMatrix(matrix, offset, context, options = {}) {
   matrix.forEach((row, y) => {
     row.forEach((value, x) => {
       if (value !== 0) {
+        const cell = resolveCell(value, options.animal);
+        if (!cell) return;
+        const color = COLORS[cell.type];
+
         if (themeTokens.wireframe) {
-          context.strokeStyle = COLORS[value];
+          context.strokeStyle = color;
           context.lineWidth = 0.08;
           context.strokeRect(x + offset.x, y + offset.y, 1, 1);
-        } else {
-          context.fillStyle = COLORS[value];
+        } else if (themeTokens.water) {
+          context.fillStyle = getWaterGradient(
+            color,
+            context,
+            x + offset.x,
+            y + offset.y
+          );
           context.fillRect(x + offset.x, y + offset.y, 1, 1);
+          drawBorder(context, x + offset.x, y + offset.y, color);
+        } else {
+          context.fillStyle = color;
+          context.fillRect(x + offset.x, y + offset.y, 1, 1);
+          drawBorder(context, x + offset.x, y + offset.y, color);
+        }
+
+        if (themeTokens.zoo && !options.ghost && cell.animal) {
+          drawAnimalFace(context, x + offset.x, y + offset.y, cell.animal, color);
         }
       }
     });
@@ -643,16 +990,18 @@ function drawGhost() {
 
   ctx.save();
   ctx.globalAlpha = themeTokens.ghostAlpha;
-  drawMatrix(player.matrix, ghostPos, ctx);
+  drawMatrix(player.matrix, ghostPos, ctx, { ghost: true, animal: player.animal });
   ctx.restore();
 }
 
-function drawPreview(context, matrix) {
+function drawPreview(context, piece) {
   context.clearRect(0, 0, PREVIEW_SIZE, PREVIEW_SIZE);
   context.fillStyle = themeTokens.previewBg;
   context.fillRect(0, 0, PREVIEW_SIZE, PREVIEW_SIZE);
-  if (matrix) {
-    drawMatrix(matrix, { x: 0.5, y: 0.5 }, context);
+  if (piece && piece.matrix) {
+    drawMatrix(piece.matrix, { x: 0.5, y: 0.5 }, context, {
+      animal: piece.animal,
+    });
   }
 }
 
@@ -662,7 +1011,7 @@ function draw() {
   drawGrid();
   drawMatrix(board, { x: 0, y: 0 }, ctx);
   drawGhost();
-  drawMatrix(player.matrix, player.pos, ctx);
+  drawMatrix(player.matrix, player.pos, ctx, { animal: player.animal });
 
   drawPreview(nextCtx, player.next);
   drawPreview(holdCtx, holdPiece);
@@ -672,7 +1021,13 @@ function update(time = 0) {
   const delta = time - lastTime;
   lastTime = time;
 
-  if (!isPaused && !isGameOver && !isWin) {
+  if (themeDirty) {
+    void document.body.offsetHeight;
+    updateThemeTokens();
+    themeDirty = false;
+  }
+
+  if (!isPaused && !isGameOver && !isWin && !stageTransition) {
     dropCounter += delta;
     if (dropCounter > dropInterval) {
       playerDrop();
@@ -684,6 +1039,10 @@ function update(time = 0) {
 }
 
 function togglePause() {
+  if (stageTransition) {
+    endStageTransition();
+    return;
+  }
   if (isGameOver || isWin) {
     resetGame();
   }
@@ -708,12 +1067,17 @@ function resetGame() {
   dropInterval = STAGES[0].speeds[0];
   isGameOver = false;
   isWin = false;
+  stageTransition = false;
   isPaused = false;
   hasStarted = true;
   holdPiece = null;
   holdUsed = false;
   updateGameOverUI(false);
   updateWinUI(false);
+  hideStageOverlay();
+  if (themeMode === "auto") {
+    applyTheme(themeForStage(stageIndex));
+  }
   statusEl.textContent = "Playing";
   toggleBtn.textContent = "Pause";
   updateStats();
@@ -739,7 +1103,13 @@ soundBtn.addEventListener("click", () => {
 });
 
 themeSelect.addEventListener("change", (event) => {
-  applyTheme(event.target.value);
+  if (themeMode !== "auto") {
+    applyTheme(event.target.value);
+  }
+});
+
+themeAutoToggle.addEventListener("change", (event) => {
+  setThemeMode(event.target.checked ? "auto" : "manual");
 });
 
 document.addEventListener("keydown", (event) => {
@@ -762,17 +1132,24 @@ document.addEventListener("keydown", (event) => {
     event.preventDefault();
   }
 
-  if (event.code === "KeyP") {
-    if (!hasStarted) return;
-    togglePause();
-  }
-
   if (event.code === "KeyM") {
     setSoundEnabled(!soundEnabled);
   }
 
   if (event.code === "KeyR") {
     resetGame();
+  }
+
+  if (stageTransition) {
+    if (event.code === "Space") {
+      endStageTransition();
+    }
+    return;
+  }
+
+  if (event.code === "KeyP") {
+    if (!hasStarted) return;
+    togglePause();
   }
 
   if (event.code === "KeyC") {
@@ -800,8 +1177,10 @@ window.addEventListener("resize", () => {
 });
 
 const savedTheme = localStorage.getItem(THEME_KEY) || "minimal";
+const savedMode = localStorage.getItem(THEME_MODE_KEY) || "auto";
 themeSelect.value = savedTheme;
-applyTheme(savedTheme);
+setThemeMode(savedMode);
+updateThemeTokens();
 
 updateStats();
 setSoundEnabled(soundEnabled);

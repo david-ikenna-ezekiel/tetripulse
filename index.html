@@ -45,8 +45,9 @@
             </div>
             <div class="stage-overlay" id="stageOverlay" aria-hidden="true">
               <div class="stage-card">
-                <span class="overlay-eyebrow">Stage</span>
+                <span class="overlay-eyebrow" id="stageOverlayEyebrow">Stage</span>
                 <h3 id="stageOverlayName">Drift</h3>
+                <p id="stageOverlaySub">Get ready</p>
               </div>
             </div>
           </div>
@@ -116,11 +117,18 @@
               <h2>Theme</h2>
               <label class="select">
                 <span class="muted">Choose theme</span>
+                <span class="toggle">
+                  <input id="themeAuto" type="checkbox" />
+                  <span>Follow stage</span>
+                </span>
                 <select id="themeSelect">
                   <option value="minimal">Minimal</option>
                   <option value="noir">Noir</option>
                   <option value="ocean">Ocean</option>
                   <option value="ember">Ember</option>
+                  <option value="neon">Neon</option>
+                  <option value="canyon">Canyon</option>
+                  <option value="zoo">Zoo</option>
                   <option value="wireframe">Wireframe</option>
                 </select>
               </label>

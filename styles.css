@@ -233,7 +233,7 @@ body {
   backdrop-filter: blur(4px);
 }
 
-.board-shell.game-over .board-overlay {
+.board-shell.game-over .gameover-overlay {
   opacity: 1;
   pointer-events: auto;
 }

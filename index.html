@@ -115,12 +115,16 @@
             </div>
             <div class="card-section">
               <h2>Theme</h2>
-              <label class="select">
+              <div class="select">
                 <span class="muted">Choose theme</span>
-                <span class="toggle">
+                <label class="toggle">
                   <input id="themeAuto" type="checkbox" />
                   <span>Follow stage</span>
-                </span>
+                </label>
+                <label class="toggle">
+                  <input id="gridToggle" type="checkbox" />
+                  <span>Faint grid</span>
+                </label>
                 <select id="themeSelect">
                   <option value="minimal">Minimal</option>
                   <option value="noir">Noir</option>
@@ -131,7 +135,7 @@
                   <option value="zoo">Zoo</option>
                   <option value="wireframe">Wireframe</option>
                 </select>
-              </label>
+              </div>
             </div>
           </div>
         </aside>

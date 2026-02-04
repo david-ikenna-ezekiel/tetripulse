@@ -24,6 +24,7 @@ const resetBtn = document.getElementById("resetBtn");
 const soundBtn = document.getElementById("soundBtn");
 const themeSelect = document.getElementById("themeSelect");
 const themeAutoToggle = document.getElementById("themeAuto");
+const gridToggle = document.getElementById("gridToggle");
 
 const COLS = 10;
 const ROWS = 20;
@@ -85,6 +86,7 @@ const lineScores = [0, 40, 100, 300, 1200];
 const HIGH_SCORE_KEY = "tetripulse_high_scores";
 const THEME_KEY = "tetripulse_theme";
 const THEME_MODE_KEY = "tetripulse_theme_mode";
+const GRID_KEY = "tetripulse_grid";
 const STAGES = [
   { name: "Drift", lineGoal: 8, speeds: [800, 650, 520] },
   { name: "Flow", lineGoal: 10, speeds: [720, 580, 460] },
@@ -130,10 +132,13 @@ let stageSection = 0;
 let themeDirty = false;
 let themeMode = "auto";
 let stageTransition = false;
+let gridEnabled = localStorage.getItem(GRID_KEY) === "true";
 let themeTokens = {
   boardBg: "#fefdfb",
   previewBg: "#faf9f6",
   gridLine: "rgba(0, 0, 0, 0.05)",
+  gridLineStrong: "rgba(0, 0, 0, 0.12)",
+  gridVisible: false,
   ghostAlpha: 0.12,
   wireframe: false,
 };
@@ -180,7 +185,11 @@ function parseColorToRgb(color) {
       .replace(")", "")
       .split(",")
       .map((value) => Number.parseFloat(value.trim()));
-    return { r: parts[0] || 0, g: parts[1] || 0, b: parts[2] || 0 };
+    return {
+      r: parts[0] || 0,
+      g: parts[1] || 0,
+      b: parts[2] || 0,
+    };
   }
 
   return { r: 0, g: 0, b: 0 };
@@ -204,6 +213,11 @@ function updateThemeTokens() {
     boardBg: readCssVar("--board-bg", "#fefdfb"),
     previewBg: readCssVar("--preview-bg", "#faf9f6"),
     gridLine: readCssVar("--grid-line", "rgba(0, 0, 0, 0.05)"),
+    gridLineStrong: readCssVar(
+      "--grid-line-strong",
+      readCssVar("--grid-line", "rgba(0, 0, 0, 0.05)")
+    ),
+    gridVisible: themeName === "wireframe",
     ghostAlpha: Number.parseFloat(readCssVar("--ghost-alpha", "0.12")) || 0.12,
     wireframe: themeName === "wireframe",
     water: themeName === "ocean",
@@ -225,7 +239,22 @@ function applyTheme(themeName) {
   document.body.dataset.theme = themeName;
   localStorage.setItem(THEME_KEY, themeName);
   themeSelect.value = themeName;
-  themeDirty = true;
+  updateThemeTokens();
+  themeDirty = false;
+}
+
+function setGridEnabled(enabled) {
+  gridEnabled = enabled;
+  localStorage.setItem(GRID_KEY, enabled ? "true" : "false");
+  if (gridToggle) {
+    gridToggle.checked = enabled;
+  }
+}
+
+function isGridEnabled() {
+  if (themeTokens.gridVisible) return true;
+  if (gridToggle) return gridToggle.checked;
+  return gridEnabled;
 }
 
 function themeForStage(index) {
@@ -952,7 +981,14 @@ function drawMatrix(matrix, offset, context, options = {}) {
 }
 
 function drawGrid() {
-  ctx.strokeStyle = themeTokens.gridLine;
+  const gridColor = themeTokens.gridVisible
+    ? themeTokens.gridLine
+    : gridEnabled
+      ? themeTokens.gridLineStrong
+      : null;
+  if (!gridColor) return;
+  ctx.strokeStyle = gridColor;
+  ctx.lineWidth = themeTokens.gridVisible ? 0.035 : 0.04;
   for (let x = 0; x <= COLS; x += 1) {
     ctx.beginPath();
     ctx.moveTo(x, 0);
@@ -1112,6 +1148,15 @@ themeAutoToggle.addEventListener("change", (event) => {
   setThemeMode(event.target.checked ? "auto" : "manual");
 });
 
+if (gridToggle) {
+  gridToggle.addEventListener("change", (event) => {
+    setGridEnabled(event.target.checked);
+  });
+  gridToggle.addEventListener("input", (event) => {
+    setGridEnabled(event.target.checked);
+  });
+}
+
 document.addEventListener("keydown", (event) => {
   if (event.repeat) return;
   ensureAudio();
@@ -1181,6 +1226,7 @@ const savedMode = localStorage.getItem(THEME_MODE_KEY) || "auto";
 themeSelect.value = savedTheme;
 setThemeMode(savedMode);
 updateThemeTokens();
+setGridEnabled(gridEnabled);
 
 updateStats();
 setSoundEnabled(soundEnabled);

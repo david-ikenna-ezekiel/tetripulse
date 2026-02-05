@@ -52,19 +52,50 @@
             </div>
           </div>
           <div class="hint">
-            <span>← → move</span>
-            <span>↑ rotate</span>
-            <span>↓ soft drop</span>
-            <span>space hard drop</span>
-            <span>C hold</span>
-            <span>P pause</span>
-            <span>M sound</span>
-            <span>R reset</span>
+            <span class="hint-keyboard">← → move</span>
+            <span class="hint-keyboard">↑ rotate</span>
+            <span class="hint-keyboard">↓ soft drop</span>
+            <span class="hint-keyboard">space hard drop</span>
+            <span class="hint-keyboard">C hold</span>
+            <span class="hint-keyboard">P pause</span>
+            <span class="hint-keyboard">M sound</span>
+            <span class="hint-keyboard">R reset</span>
+            <span class="hint-touch">Swipe left/right to move</span>
+            <span class="hint-touch">Swipe down to soft drop</span>
+            <span class="hint-touch">Tap board to rotate</span>
+            <span class="hint-touch">Buttons for hard drop, hold, pause</span>
           </div>
           <div class="controls">
             <button id="toggleBtn">Start</button>
             <button id="resetBtn" class="ghost">Reset</button>
             <button id="soundBtn" class="ghost">Sound: On</button>
+          </div>
+          <div class="touch-controls" aria-label="Touch controls">
+            <div class="touch-pad" role="group" aria-label="Movement">
+              <button class="touch-btn" type="button" data-action="left" aria-label="Move left">
+                Left
+              </button>
+              <button class="touch-btn" type="button" data-action="down" aria-label="Soft drop">
+                Down
+              </button>
+              <button class="touch-btn" type="button" data-action="right" aria-label="Move right">
+                Right
+              </button>
+            </div>
+            <div class="touch-actions" role="group" aria-label="Actions">
+              <button class="touch-btn" type="button" data-action="rotate" aria-label="Rotate">
+                Rotate
+              </button>
+              <button class="touch-btn" type="button" data-action="hard" aria-label="Hard drop">
+                Hard drop
+              </button>
+              <button class="touch-btn" type="button" data-action="hold" aria-label="Hold piece">
+                Hold
+              </button>
+              <button class="touch-btn" type="button" data-action="pause" aria-label="Pause or resume">
+                Pause
+              </button>
+            </div>
           </div>
         </section>
 
@@ -108,7 +139,7 @@
               </div>
             </div>
           </div>
-          <div class="card duo">
+          <div class="card duo card--extras">
             <div class="card-section">
               <h2>High Scores</h2>
               <ol id="highScoreList" class="score-list"></ol>

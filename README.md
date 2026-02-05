@@ -6,7 +6,7 @@ Minimal, responsive Tetris-inspired game with stages, themes, and modern quality
 [Play TetriPulse](https://david-ikenna-ezekiel.github.io/tetripulse/)
 
 ## Support note
-Desktop only for now. Touch-only devices are not supported yet.
+Touch devices are supported with on-screen controls and swipe gestures.
 
 ## Features
 - Ghost piece, hold queue, and next preview

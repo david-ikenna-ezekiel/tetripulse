@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>TetriPulse</title>
-    <link rel="stylesheet" href="styles.css?v=20260201" />
+    <link rel="stylesheet" href="styles.css?v=20260205" />
   </head>
   <body>
     <div class="wrap">
@@ -71,30 +71,40 @@
             <button id="soundBtn" class="ghost">Sound: On</button>
           </div>
           <div class="touch-controls" aria-label="Touch controls">
-            <div class="touch-pad" role="group" aria-label="Movement">
-              <button class="touch-btn" type="button" data-action="left" aria-label="Move left">
-                Left
+            <div class="touch-meta" role="group" aria-label="Game controls">
+              <button class="touch-btn touch-btn--ghost" type="button" data-action="pause">
+                Start
               </button>
-              <button class="touch-btn" type="button" data-action="down" aria-label="Soft drop">
-                Down
+              <button class="touch-btn touch-btn--ghost" type="button" data-action="reset">
+                Reset
               </button>
-              <button class="touch-btn" type="button" data-action="right" aria-label="Move right">
-                Right
+              <button class="touch-btn touch-btn--ghost" type="button" data-action="sound">
+                Sound: On
               </button>
             </div>
-            <div class="touch-actions" role="group" aria-label="Actions">
-              <button class="touch-btn" type="button" data-action="rotate" aria-label="Rotate">
-                Rotate
-              </button>
-              <button class="touch-btn" type="button" data-action="hard" aria-label="Hard drop">
-                Hard drop
-              </button>
-              <button class="touch-btn" type="button" data-action="hold" aria-label="Hold piece">
-                Hold
-              </button>
-              <button class="touch-btn" type="button" data-action="pause" aria-label="Pause or resume">
-                Pause
-              </button>
+            <div class="touch-grid">
+              <div class="touch-pad" role="group" aria-label="Movement">
+                <button class="touch-btn" type="button" data-action="left" aria-label="Move left">
+                  Left
+                </button>
+                <button class="touch-btn" type="button" data-action="down" aria-label="Soft drop">
+                  Down
+                </button>
+                <button class="touch-btn" type="button" data-action="right" aria-label="Move right">
+                  Right
+                </button>
+              </div>
+              <div class="touch-actions" role="group" aria-label="Actions">
+                <button class="touch-btn" type="button" data-action="rotate" aria-label="Rotate">
+                  Rotate
+                </button>
+                <button class="touch-btn" type="button" data-action="hard" aria-label="Hard drop">
+                  Hard drop
+                </button>
+                <button class="touch-btn" type="button" data-action="hold" aria-label="Hold piece">
+                  Hold
+                </button>
+              </div>
             </div>
           </div>
         </section>
@@ -173,6 +183,6 @@
       </main>
     </div>
 
-    <script src="script.js?v=20260201"></script>
+    <script src="script.js?v=20260205"></script>
   </body>
 </html>

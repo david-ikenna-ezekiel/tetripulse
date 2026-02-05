@@ -25,6 +25,7 @@ const soundBtn = document.getElementById("soundBtn");
 const themeSelect = document.getElementById("themeSelect");
 const themeAutoToggle = document.getElementById("themeAuto");
 const gridToggle = document.getElementById("gridToggle");
+const touchButtons = document.querySelectorAll(".touch-controls [data-action]");
 
 const COLS = 10;
 const ROWS = 20;
@@ -142,6 +143,21 @@ let themeTokens = {
   ghostAlpha: 0.12,
   wireframe: false,
 };
+
+const touchMedia = window.matchMedia("(pointer: coarse)");
+const touchState = {
+  active: false,
+  pointerId: null,
+  startX: 0,
+  startY: 0,
+  lastX: 0,
+  lastY: 0,
+  moved: false,
+};
+const SWIPE_THRESHOLD = 18;
+const TAP_THRESHOLD = 10;
+const REPEAT_DELAY = 220;
+const REPEAT_INTERVAL = 70;
 
 function createMatrix(width, height) {
   return Array.from({ length: height }, () => Array(width).fill(0));
@@ -287,6 +303,30 @@ function configureCanvas(canvasEl, context, width, height, scale) {
   context.imageSmoothingEnabled = false;
 }
 
+function getAvailableBoardHeight() {
+  if (!boardShell) return null;
+  const boardContainer = boardShell.parentElement;
+  if (!boardContainer) return null;
+  const hint = boardContainer.querySelector(".hint");
+  const controls = boardContainer.querySelector(".controls");
+  const touchControls = boardContainer.querySelector(".touch-controls");
+  const hintHeight = hint ? hint.getBoundingClientRect().height : 0;
+  const controlsHeight = controls ? controls.getBoundingClientRect().height : 0;
+  const touchControlsHeight = touchControls
+    ? touchControls.getBoundingClientRect().height
+    : 0;
+  const rect = boardShell.getBoundingClientRect();
+  const spacing = 24;
+  const available =
+    window.innerHeight -
+    rect.top -
+    hintHeight -
+    controlsHeight -
+    touchControlsHeight -
+    spacing;
+  return available > 0 ? available : null;
+}
+
 function resizeCanvases() {
   const rect = canvas.getBoundingClientRect();
   const containerWidth = canvas.parentElement
@@ -294,8 +334,14 @@ function resizeCanvases() {
     : rect.width;
   if (!rect.width && !containerWidth) return;
 
-  const maxBoardWidth = Math.min(containerWidth || rect.width, 320);
-  blockSize = Math.max(12, Math.floor(maxBoardWidth / COLS));
+  const maxBoardWidth = Math.min(containerWidth || rect.width, 360);
+  let maxBlockSize = Math.floor(maxBoardWidth / COLS);
+  const availableHeight = getAvailableBoardHeight();
+  if (availableHeight) {
+    const heightBlockSize = Math.floor(availableHeight / ROWS);
+    maxBlockSize = Math.min(maxBlockSize, heightBlockSize);
+  }
+  blockSize = Math.max(12, maxBlockSize);
   const boardWidth = blockSize * COLS;
   const boardHeight = blockSize * ROWS;
 
@@ -306,6 +352,22 @@ function resizeCanvases() {
 
   configureCanvas(nextCanvas, nextCtx, previewSize, previewSize, previewBlock);
   configureCanvas(holdCanvas, holdCtx, previewSize, previewSize, previewBlock);
+}
+
+function setInputMode(mode) {
+  document.body.dataset.input = mode;
+}
+
+function detectInputMode() {
+  const hasTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+  const isCoarse = touchMedia.matches;
+  setInputMode(hasTouch || isCoarse ? "touch" : "keyboard");
+  resizeCanvases();
+}
+
+function isTouchInput(event) {
+  if (!event) return document.body.dataset.input === "touch";
+  return event.pointerType === "touch" || event.pointerType === "pen";
 }
 
 function loadHighScores() {
@@ -1120,6 +1182,87 @@ function resetGame() {
   resetPlayer();
 }
 
+function handleAction(action) {
+  ensureAudio();
+
+  if (action === "pause") {
+    if (!hasStarted) {
+      resetGame();
+      return;
+    }
+    togglePause();
+    return;
+  }
+
+  if (!hasStarted) return;
+
+  if (stageTransition) {
+    endStageTransition();
+    return;
+  }
+
+  if (action === "hold") {
+    holdSwap();
+    return;
+  }
+
+  if (isPaused || isGameOver || isWin) return;
+
+  if (action === "left") {
+    playerMove(-1);
+  } else if (action === "right") {
+    playerMove(1);
+  } else if (action === "down") {
+    playerDrop(true);
+  } else if (action === "rotate") {
+    playerRotate();
+  } else if (action === "hard") {
+    hardDrop();
+  }
+}
+
+function bindTouchButton(button) {
+  const action = button.dataset.action;
+  const repeatable = action === "left" || action === "right" || action === "down";
+  let repeatTimeout = null;
+  let repeatInterval = null;
+
+  const clearTimers = () => {
+    if (repeatTimeout) {
+      clearTimeout(repeatTimeout);
+      repeatTimeout = null;
+    }
+    if (repeatInterval) {
+      clearInterval(repeatInterval);
+      repeatInterval = null;
+    }
+  };
+
+  const onPointerDown = (event) => {
+    if (!isTouchInput(event)) return;
+    event.preventDefault();
+    button.setPointerCapture?.(event.pointerId);
+    handleAction(action);
+    if (repeatable) {
+      repeatTimeout = setTimeout(() => {
+        repeatInterval = setInterval(() => {
+          handleAction(action);
+        }, REPEAT_INTERVAL);
+      }, REPEAT_DELAY);
+    }
+  };
+
+  const onPointerUp = () => {
+    clearTimers();
+  };
+
+  button.addEventListener("pointerdown", onPointerDown);
+  button.addEventListener("pointerup", onPointerUp);
+  button.addEventListener("pointercancel", onPointerUp);
+  button.addEventListener("pointerleave", onPointerUp);
+  button.addEventListener("contextmenu", (event) => event.preventDefault());
+}
+
 toggleBtn.addEventListener("click", () => {
   ensureAudio();
   if (!hasStarted) {
@@ -1216,10 +1359,79 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
-resizeCanvases();
+if (touchButtons.length) {
+  touchButtons.forEach((button) => bindTouchButton(button));
+}
+
+if (boardShell) {
+  boardShell.addEventListener("pointerdown", (event) => {
+    if (!isTouchInput(event)) return;
+    if (touchState.active) return;
+    event.preventDefault();
+    touchState.active = true;
+    touchState.pointerId = event.pointerId;
+    touchState.startX = event.clientX;
+    touchState.startY = event.clientY;
+    touchState.lastX = event.clientX;
+    touchState.lastY = event.clientY;
+    touchState.moved = false;
+    boardShell.setPointerCapture?.(event.pointerId);
+  });
+
+  boardShell.addEventListener("pointermove", (event) => {
+    if (!touchState.active || event.pointerId !== touchState.pointerId) return;
+    const dx = event.clientX - touchState.lastX;
+    const dy = event.clientY - touchState.lastY;
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+
+    if (absDx < SWIPE_THRESHOLD && absDy < SWIPE_THRESHOLD) return;
+
+    if (absDx > absDy) {
+      handleAction(dx > 0 ? "right" : "left");
+      touchState.lastX = event.clientX;
+      touchState.moved = true;
+      return;
+    }
+
+    if (dy > 0) {
+      handleAction("down");
+      touchState.lastY = event.clientY;
+      touchState.moved = true;
+    }
+  });
+
+  boardShell.addEventListener("pointerup", (event) => {
+    if (!touchState.active || event.pointerId !== touchState.pointerId) return;
+    const dx = event.clientX - touchState.startX;
+    const dy = event.clientY - touchState.startY;
+    const distance = Math.hypot(dx, dy);
+    if (!touchState.moved && distance < TAP_THRESHOLD) {
+      handleAction("rotate");
+    }
+    touchState.active = false;
+    touchState.pointerId = null;
+  });
+
+  boardShell.addEventListener("pointercancel", (event) => {
+    if (event.pointerId !== touchState.pointerId) return;
+    touchState.active = false;
+    touchState.pointerId = null;
+  });
+
+  boardShell.addEventListener("contextmenu", (event) => event.preventDefault());
+}
+
 window.addEventListener("resize", () => {
   resizeCanvases();
 });
+
+detectInputMode();
+if (touchMedia.addEventListener) {
+  touchMedia.addEventListener("change", detectInputMode);
+} else if (touchMedia.addListener) {
+  touchMedia.addListener(detectInputMode);
+}
 
 const savedTheme = localStorage.getItem(THEME_KEY) || "minimal";
 const savedMode = localStorage.getItem(THEME_MODE_KEY) || "auto";

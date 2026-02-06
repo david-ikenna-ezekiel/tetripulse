@@ -2,9 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+    />
     <title>TetriPulse</title>
-    <link rel="stylesheet" href="styles.css?v=20260201" />
+    <link rel="stylesheet" href="styles.css?v=20260205-20" />
   </head>
   <body>
     <div class="wrap">
@@ -16,38 +19,94 @@
         <div class="status">
           <span id="statusText">Press Start</span>
         </div>
+        <button id="settingsBtn" class="settings-btn" type="button" aria-label="Open settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M12 8.8a3.2 3.2 0 1 0 0 6.4 3.2 3.2 0 0 0 0-6.4Zm9 3.2a7.5 7.5 0 0 0-.1-1.2l2-1.6-2-3.5-2.4 1a8.6 8.6 0 0 0-2.1-1.2l-.3-2.6H8.9l-.3 2.6a8.6 8.6 0 0 0-2.1 1.2l-2.4-1-2 3.5 2 1.6a7.5 7.5 0 0 0 0 2.4l-2 1.6 2 3.5 2.4-1a8.6 8.6 0 0 0 2.1 1.2l.3 2.6h6.2l.3-2.6a8.6 8.6 0 0 0 2.1-1.2l2.4 1 2-3.5-2-1.6c.1-.4.1-.8.1-1.2Z"
+            />
+          </svg>
+        </button>
       </header>
 
       <main class="game">
         <section class="board">
-          <div class="board-shell" id="boardShell">
-            <canvas id="board" width="300" height="600"></canvas>
-            <div class="board-overlay gameover-overlay" id="gameOverOverlay" aria-hidden="true">
-              <div class="overlay-card">
-                <span class="overlay-eyebrow">No Moves Left</span>
-                <h3>Game Over</h3>
-                <p>Press R to restart</p>
+          <div class="device">
+            <div class="device-screen">
+              <div class="board-row">
+                <div class="board-shell" id="boardShell">
+                  <canvas id="board" width="300" height="600"></canvas>
+                  <div class="board-overlay gameover-overlay" id="gameOverOverlay" aria-hidden="true">
+                    <div class="overlay-card">
+                      <span class="overlay-eyebrow">No Moves Left</span>
+                      <h3>Game Over</h3>
+                      <p>Press R to restart</p>
+                    </div>
+                  </div>
+                  <div class="board-overlay win-overlay" id="winOverlay" aria-hidden="true">
+                    <div class="overlay-card">
+                      <svg class="trophy" viewBox="0 0 64 64" aria-hidden="true">
+                        <path d="M18 8h28v12c0 7.7-6.3 14-14 14s-14-6.3-14-14V8z" />
+                        <path d="M24 38h16v6H24z" />
+                        <path d="M20 44h24v6H20z" />
+                        <path d="M14 12h4v8c0 6.6 4.2 12.3 10 14.4V38c-10.4-1.6-18-10.4-18-21V12z" />
+                        <path d="M46 12h4v5c0 10.6-7.6 19.4-18 21v-3.6c5.8-2.1 10-7.8 10-14.4V12z" />
+                      </svg>
+                      <span class="overlay-eyebrow">You Won!!</span>
+                      <h3>Endless Complete</h3>
+                      <p>Press R to play again</p>
+                    </div>
+                  </div>
+                  <div class="stage-overlay" id="stageOverlay" aria-hidden="true">
+                    <div class="stage-card">
+                      <span class="overlay-eyebrow" id="stageOverlayEyebrow">Stage</span>
+                      <h3 id="stageOverlayName">Drift</h3>
+                      <p id="stageOverlaySub">Get ready</p>
+                    </div>
+                  </div>
+                </div>
+                <aside class="mobile-hud" aria-label="Hold and next">
+                  <div class="hud-card">
+                    <h3>Next</h3>
+                    <canvas id="nextMobile" width="96" height="96"></canvas>
+                  </div>
+                  <div class="hud-card">
+                    <h3>Hold</h3>
+                    <canvas id="holdMobile" width="96" height="96"></canvas>
+                  </div>
+                </aside>
               </div>
             </div>
-            <div class="board-overlay win-overlay" id="winOverlay" aria-hidden="true">
-              <div class="overlay-card">
-                <svg class="trophy" viewBox="0 0 64 64" aria-hidden="true">
-                  <path d="M18 8h28v12c0 7.7-6.3 14-14 14s-14-6.3-14-14V8z" />
-                  <path d="M24 38h16v6H24z" />
-                  <path d="M20 44h24v6H20z" />
-                  <path d="M14 12h4v8c0 6.6 4.2 12.3 10 14.4V38c-10.4-1.6-18-10.4-18-21V12z" />
-                  <path d="M46 12h4v5c0 10.6-7.6 19.4-18 21v-3.6c5.8-2.1 10-7.8 10-14.4V12z" />
-                </svg>
-                <span class="overlay-eyebrow">You Won!!</span>
-                <h3>Endless Complete</h3>
-                <p>Press R to play again</p>
-              </div>
+            <div class="device-meta" role="group" aria-label="Game controls">
+              <button class="gamepad-meta-btn" type="button" data-action="pause">Start</button>
+              <button class="gamepad-meta-btn" type="button" data-action="reset">Reset</button>
             </div>
-            <div class="stage-overlay" id="stageOverlay" aria-hidden="true">
-              <div class="stage-card">
-                <span class="overlay-eyebrow" id="stageOverlayEyebrow">Stage</span>
-                <h3 id="stageOverlayName">Drift</h3>
-                <p id="stageOverlaySub">Get ready</p>
+            <div class="device-controls" aria-label="Touch controls">
+              <div class="dpad" role="group" aria-label="Direction pad">
+                <button class="dpad-btn dpad-up" type="button" data-action="rotate" aria-label="Rotate">
+                  Up
+                </button>
+                <button class="dpad-btn dpad-left" type="button" data-action="left" aria-label="Move left">
+                  Left
+                </button>
+                <button class="dpad-btn dpad-right" type="button" data-action="right" aria-label="Move right">
+                  Right
+                </button>
+                <button class="dpad-btn dpad-down" type="button" data-action="down" aria-label="Soft drop">
+                  Down
+                </button>
+              </div>
+              <div class="action-cluster" aria-label="Action buttons">
+                <div class="action-row">
+                  <button class="action-btn hold-btn" type="button" data-action="hold" aria-label="Hold">
+                    Hold
+                  </button>
+                  <button class="action-btn rotate-btn" type="button" data-action="rotate" aria-label="Rotate">
+                    Rotate
+                  </button>
+                </div>
+                <button class="action-btn drop-btn" type="button" data-action="hard" aria-label="Hard drop">
+                  Drop
+                </button>
               </div>
             </div>
           </div>
@@ -69,33 +128,6 @@
             <button id="toggleBtn">Start</button>
             <button id="resetBtn" class="ghost">Reset</button>
             <button id="soundBtn" class="ghost">Sound: On</button>
-          </div>
-          <div class="touch-controls" aria-label="Touch controls">
-            <div class="touch-pad" role="group" aria-label="Movement">
-              <button class="touch-btn" type="button" data-action="left" aria-label="Move left">
-                Left
-              </button>
-              <button class="touch-btn" type="button" data-action="down" aria-label="Soft drop">
-                Down
-              </button>
-              <button class="touch-btn" type="button" data-action="right" aria-label="Move right">
-                Right
-              </button>
-            </div>
-            <div class="touch-actions" role="group" aria-label="Actions">
-              <button class="touch-btn" type="button" data-action="rotate" aria-label="Rotate">
-                Rotate
-              </button>
-              <button class="touch-btn" type="button" data-action="hard" aria-label="Hard drop">
-                Hard drop
-              </button>
-              <button class="touch-btn" type="button" data-action="hold" aria-label="Hold piece">
-                Hold
-              </button>
-              <button class="touch-btn" type="button" data-action="pause" aria-label="Pause or resume">
-                Pause
-              </button>
-            </div>
           </div>
         </section>
 
@@ -171,8 +203,49 @@
           </div>
         </aside>
       </main>
+      <div class="settings-drawer" id="settingsDrawer" aria-hidden="true">
+        <div class="settings-panel">
+          <div class="settings-header">
+            <h2>Settings</h2>
+            <button id="settingsClose" class="settings-close" type="button">Close</button>
+          </div>
+          <div class="settings-section">
+            <label class="toggle">
+              <input id="soundToggleMobile" type="checkbox" />
+              <span>Sound effects</span>
+            </label>
+          </div>
+          <div class="settings-section">
+            <div class="select">
+              <span class="muted">Theme</span>
+              <label class="toggle">
+                <input id="themeAutoMobile" type="checkbox" />
+                <span>Follow stage</span>
+              </label>
+              <label class="toggle">
+                <input id="gridToggleMobile" type="checkbox" />
+                <span>Faint grid</span>
+              </label>
+              <select id="themeSelectMobile">
+                <option value="minimal">Minimal</option>
+                <option value="noir">Noir</option>
+                <option value="ocean">Ocean</option>
+                <option value="ember">Ember</option>
+                <option value="neon">Neon</option>
+                <option value="canyon">Canyon</option>
+                <option value="zoo">Zoo</option>
+                <option value="wireframe">Wireframe</option>
+              </select>
+            </div>
+          </div>
+          <div class="settings-section">
+            <h3>High scores</h3>
+            <ol id="highScoreListMobile" class="score-list"></ol>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <script src="script.js?v=20260201"></script>
+    <script src="script.js?v=20260205-20"></script>
   </body>
 </html>

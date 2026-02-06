@@ -4,6 +4,14 @@ const nextCanvas = document.getElementById("next");
 const nextCtx = nextCanvas.getContext("2d");
 const holdCanvas = document.getElementById("hold");
 const holdCtx = holdCanvas.getContext("2d");
+const nextMobileCanvas = document.getElementById("nextMobile");
+const nextMobileCtx = nextMobileCanvas
+  ? nextMobileCanvas.getContext("2d")
+  : null;
+const holdMobileCanvas = document.getElementById("holdMobile");
+const holdMobileCtx = holdMobileCanvas
+  ? holdMobileCanvas.getContext("2d")
+  : null;
 
 const scoreEl = document.getElementById("score");
 const linesEl = document.getElementById("lines");
@@ -22,10 +30,21 @@ const statusEl = document.getElementById("statusText");
 const toggleBtn = document.getElementById("toggleBtn");
 const resetBtn = document.getElementById("resetBtn");
 const soundBtn = document.getElementById("soundBtn");
+const settingsBtn = document.getElementById("settingsBtn");
+const settingsDrawer = document.getElementById("settingsDrawer");
+const settingsClose = document.getElementById("settingsClose");
 const themeSelect = document.getElementById("themeSelect");
 const themeAutoToggle = document.getElementById("themeAuto");
 const gridToggle = document.getElementById("gridToggle");
-const touchButtons = document.querySelectorAll(".touch-controls [data-action]");
+const soundToggleMobile = document.getElementById("soundToggleMobile");
+const themeSelectMobile = document.getElementById("themeSelectMobile");
+const themeAutoMobile = document.getElementById("themeAutoMobile");
+const gridToggleMobile = document.getElementById("gridToggleMobile");
+const highScoreListMobileEl = document.getElementById("highScoreListMobile");
+const touchButtons = document.querySelectorAll("[data-action]");
+const touchPauseBtn = document.querySelector(
+  '.device-meta [data-action="pause"]'
+);
 
 const COLS = 10;
 const ROWS = 20;
@@ -143,8 +162,25 @@ let themeTokens = {
   ghostAlpha: 0.12,
   wireframe: false,
 };
+let gesturesEnabled = false;
 
 const touchMedia = window.matchMedia("(pointer: coarse)");
+const supportsPointer = "PointerEvent" in window;
+const nextPreviewTargets = [];
+const holdPreviewTargets = [];
+
+if (nextCanvas && nextCtx) {
+  nextPreviewTargets.push({ canvas: nextCanvas, ctx: nextCtx });
+}
+if (nextMobileCanvas && nextMobileCtx) {
+  nextPreviewTargets.push({ canvas: nextMobileCanvas, ctx: nextMobileCtx });
+}
+if (holdCanvas && holdCtx) {
+  holdPreviewTargets.push({ canvas: holdCanvas, ctx: holdCtx });
+}
+if (holdMobileCanvas && holdMobileCtx) {
+  holdPreviewTargets.push({ canvas: holdMobileCanvas, ctx: holdMobileCtx });
+}
 const touchState = {
   active: false,
   pointerId: null,
@@ -255,6 +291,9 @@ function applyTheme(themeName) {
   document.body.dataset.theme = themeName;
   localStorage.setItem(THEME_KEY, themeName);
   themeSelect.value = themeName;
+  if (themeSelectMobile) {
+    themeSelectMobile.value = themeName;
+  }
   updateThemeTokens();
   themeDirty = false;
 }
@@ -265,12 +304,72 @@ function setGridEnabled(enabled) {
   if (gridToggle) {
     gridToggle.checked = enabled;
   }
+  if (gridToggleMobile) {
+    gridToggleMobile.checked = enabled;
+  }
 }
 
 function isGridEnabled() {
   if (themeTokens.gridVisible) return true;
   if (gridToggle) return gridToggle.checked;
   return gridEnabled;
+}
+
+function setPauseButtonLabel(label) {
+  toggleBtn.textContent = label;
+  if (touchPauseBtn) {
+    touchPauseBtn.textContent = label;
+  }
+}
+
+function syncPauseLabel() {
+  if (isGameOver || isWin) {
+    setPauseButtonLabel("Restart");
+    return;
+  }
+  if (!hasStarted) {
+    setPauseButtonLabel("Start");
+    return;
+  }
+  if (stageTransition || isPaused) {
+    setPauseButtonLabel("Resume");
+    return;
+  }
+  setPauseButtonLabel("Pause");
+}
+
+function syncSoundLabel() {
+  const label = `Sound: ${soundEnabled ? "On" : "Off"}`;
+  soundBtn.textContent = label;
+  if (soundToggleMobile) {
+    soundToggleMobile.checked = soundEnabled;
+  }
+}
+
+function syncThemeControls(themeName) {
+  const currentTheme = themeName || themeSelect.value || "minimal";
+  themeSelect.value = currentTheme;
+  if (themeSelectMobile) {
+    themeSelectMobile.value = currentTheme;
+  }
+  if (themeAutoMobile) {
+    themeAutoMobile.checked = themeMode === "auto";
+  }
+  if (themeSelectMobile) {
+    themeSelectMobile.disabled = themeMode === "auto";
+  }
+  if (gridToggleMobile) {
+    gridToggleMobile.checked = gridEnabled;
+  }
+}
+
+function setSettingsOpen(open) {
+  if (!settingsDrawer) return;
+  document.body.classList.toggle("settings-open", open);
+  settingsDrawer.setAttribute("aria-hidden", open ? "false" : "true");
+  if (settingsBtn) {
+    settingsBtn.setAttribute("aria-expanded", open ? "true" : "false");
+  }
 }
 
 function themeForStage(index) {
@@ -282,6 +381,12 @@ function setThemeMode(mode) {
   localStorage.setItem(THEME_MODE_KEY, mode);
   themeAutoToggle.checked = mode === "auto";
   themeSelect.disabled = mode === "auto";
+  if (themeAutoMobile) {
+    themeAutoMobile.checked = mode === "auto";
+  }
+  if (themeSelectMobile) {
+    themeSelectMobile.disabled = mode === "auto";
+  }
 
   if (mode === "auto") {
     applyTheme(themeForStage(stageIndex));
@@ -305,36 +410,53 @@ function configureCanvas(canvasEl, context, width, height, scale) {
 
 function getAvailableBoardHeight() {
   if (!boardShell) return null;
-  const boardContainer = boardShell.parentElement;
-  if (!boardContainer) return null;
-  const hint = boardContainer.querySelector(".hint");
-  const controls = boardContainer.querySelector(".controls");
-  const touchControls = boardContainer.querySelector(".touch-controls");
+  const boardSection = boardShell.closest(".board");
+  if (!boardSection) return null;
+  const hint = boardSection.querySelector(".hint");
+  const controls = boardSection.querySelector(".controls");
+  const device = boardSection.querySelector(".device");
+  const deviceMeta = device ? device.querySelector(".device-meta") : null;
+  const deviceControls = device ? device.querySelector(".device-controls") : null;
   const hintHeight = hint ? hint.getBoundingClientRect().height : 0;
   const controlsHeight = controls ? controls.getBoundingClientRect().height : 0;
-  const touchControlsHeight = touchControls
-    ? touchControls.getBoundingClientRect().height
+  const deviceMetaHeight = deviceMeta
+    ? deviceMeta.getBoundingClientRect().height
+    : 0;
+  const deviceControlsHeight = deviceControls
+    ? deviceControls.getBoundingClientRect().height
     : 0;
   const rect = boardShell.getBoundingClientRect();
   const spacing = 24;
+  const viewportHeight =
+    window.visualViewport?.height || window.innerHeight || 0;
   const available =
-    window.innerHeight -
+    viewportHeight -
     rect.top -
     hintHeight -
     controlsHeight -
-    touchControlsHeight -
+    deviceMetaHeight -
+    deviceControlsHeight -
     spacing;
   return available > 0 ? available : null;
 }
 
 function resizeCanvases() {
   const rect = canvas.getBoundingClientRect();
-  const containerWidth = canvas.parentElement
-    ? canvas.parentElement.clientWidth
-    : rect.width;
+  const boardRow = boardShell ? boardShell.parentElement : null;
+  const containerWidth = boardRow ? boardRow.clientWidth : rect.width;
   if (!rect.width && !containerWidth) return;
 
-  const maxBoardWidth = Math.min(containerWidth || rect.width, 360);
+  const mobileHud = boardRow ? boardRow.querySelector(".mobile-hud") : null;
+  const hudVisible =
+    mobileHud && getComputedStyle(mobileHud).display !== "none";
+  const hudWidth = hudVisible ? mobileHud.getBoundingClientRect().width : 0;
+  const rowGap = hudVisible ? 16 : 0;
+  const usableWidth =
+    containerWidth - hudWidth - rowGap > 0
+      ? containerWidth - hudWidth - rowGap
+      : containerWidth;
+
+  const maxBoardWidth = Math.min(usableWidth || rect.width, 360);
   let maxBlockSize = Math.floor(maxBoardWidth / COLS);
   const availableHeight = getAvailableBoardHeight();
   if (availableHeight) {
@@ -349,9 +471,29 @@ function resizeCanvases() {
 
   previewBlock = Math.max(10, Math.floor(blockSize * 0.9));
   const previewSize = previewBlock * PREVIEW_SIZE;
+  const mobilePreviewBlock = Math.max(8, Math.floor(blockSize * 0.7));
+  const mobilePreviewSize = mobilePreviewBlock * PREVIEW_SIZE;
 
   configureCanvas(nextCanvas, nextCtx, previewSize, previewSize, previewBlock);
   configureCanvas(holdCanvas, holdCtx, previewSize, previewSize, previewBlock);
+  if (nextMobileCanvas && nextMobileCtx) {
+    configureCanvas(
+      nextMobileCanvas,
+      nextMobileCtx,
+      mobilePreviewSize,
+      mobilePreviewSize,
+      mobilePreviewBlock
+    );
+  }
+  if (holdMobileCanvas && holdMobileCtx) {
+    configureCanvas(
+      holdMobileCanvas,
+      holdMobileCtx,
+      mobilePreviewSize,
+      mobilePreviewSize,
+      mobilePreviewBlock
+    );
+  }
 }
 
 function setInputMode(mode) {
@@ -361,13 +503,96 @@ function setInputMode(mode) {
 function detectInputMode() {
   const hasTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
   const isCoarse = touchMedia.matches;
-  setInputMode(hasTouch || isCoarse ? "touch" : "keyboard");
+  const isNarrow = window.matchMedia("(max-width: 900px)").matches;
+  const mode = hasTouch || isCoarse || isNarrow ? "touch" : "keyboard";
+  setInputMode(mode);
+  gesturesEnabled = false;
+  if (mode !== "touch") {
+    setSettingsOpen(false);
+  }
   resizeCanvases();
+  requestAnimationFrame(resizeCanvases);
 }
 
 function isTouchInput(event) {
   if (!event) return document.body.dataset.input === "touch";
   return event.pointerType === "touch" || event.pointerType === "pen";
+}
+
+function startTouchGesture(pointerId, clientX, clientY) {
+  if (!gesturesEnabled) return;
+  if (touchState.active) return;
+  touchState.active = true;
+  touchState.pointerId = pointerId;
+  touchState.startX = clientX;
+  touchState.startY = clientY;
+  touchState.lastX = clientX;
+  touchState.lastY = clientY;
+  touchState.moved = false;
+}
+
+function moveTouchGesture(pointerId, clientX, clientY) {
+  if (!gesturesEnabled) return;
+  if (!touchState.active || pointerId !== touchState.pointerId) return;
+  const dx = clientX - touchState.lastX;
+  const dy = clientY - touchState.lastY;
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+
+  if (absDx < SWIPE_THRESHOLD && absDy < SWIPE_THRESHOLD) return;
+
+  if (absDx > absDy) {
+    handleAction(dx > 0 ? "right" : "left");
+    touchState.lastX = clientX;
+    touchState.moved = true;
+    return;
+  }
+
+  if (dy > 0) {
+    handleAction("down");
+    touchState.lastY = clientY;
+    touchState.moved = true;
+  }
+}
+
+function endTouchGesture(pointerId, clientX, clientY) {
+  if (!gesturesEnabled) return;
+  if (!touchState.active || pointerId !== touchState.pointerId) return;
+  const dx = clientX - touchState.startX;
+  const dy = clientY - touchState.startY;
+  const distance = Math.hypot(dx, dy);
+  if (!touchState.moved && distance < TAP_THRESHOLD) {
+    handleAction("rotate");
+  }
+  touchState.active = false;
+  touchState.pointerId = null;
+}
+
+function preventPinchZoom(target) {
+  const onTouch = (event) => {
+    if (document.body.dataset.input !== "touch") return;
+    if (event.touches && event.touches.length > 1) {
+      event.preventDefault();
+    }
+  };
+  target.addEventListener("touchstart", onTouch, { passive: false });
+  target.addEventListener("touchmove", onTouch, { passive: false });
+}
+
+function preventDoubleTapZoom(target) {
+  let lastTap = 0;
+  target.addEventListener(
+    "touchend",
+    (event) => {
+      if (document.body.dataset.input !== "touch") return;
+      const now = Date.now();
+      if (now - lastTap < 300) {
+        event.preventDefault();
+      }
+      lastTap = now;
+    },
+    { passive: false }
+  );
 }
 
 function loadHighScores() {
@@ -389,12 +614,21 @@ function saveHighScores(scores) {
 
 function renderHighScores() {
   highScoreListEl.innerHTML = "";
+  if (highScoreListMobileEl) {
+    highScoreListMobileEl.innerHTML = "";
+  }
 
   if (highScores.length === 0) {
     const item = document.createElement("li");
     item.textContent = "—";
     item.classList.add("muted");
     highScoreListEl.appendChild(item);
+    if (highScoreListMobileEl) {
+      const mobileItem = document.createElement("li");
+      mobileItem.textContent = "—";
+      mobileItem.classList.add("muted");
+      highScoreListMobileEl.appendChild(mobileItem);
+    }
     return;
   }
 
@@ -402,6 +636,11 @@ function renderHighScores() {
     const item = document.createElement("li");
     item.textContent = value.toString();
     highScoreListEl.appendChild(item);
+    if (highScoreListMobileEl) {
+      const mobileItem = document.createElement("li");
+      mobileItem.textContent = value.toString();
+      highScoreListMobileEl.appendChild(mobileItem);
+    }
   });
 }
 
@@ -442,7 +681,7 @@ function startStageTransition(prevStage, nextStage) {
   stageTransition = true;
   isPaused = true;
   statusEl.textContent = "Stage cleared";
-  toggleBtn.textContent = "Resume";
+  syncPauseLabel();
 
   board = createMatrix(COLS, ROWS);
   player = createPlayer();
@@ -463,7 +702,7 @@ function endStageTransition() {
   stageTransition = false;
   isPaused = false;
   statusEl.textContent = "Playing";
-  toggleBtn.textContent = "Pause";
+  syncPauseLabel();
   hideStageOverlay();
 }
 
@@ -521,8 +760,8 @@ function updateStageProgress(cleared) {
     isWin = true;
     isPaused = true;
     statusEl.textContent = "You Won!!";
-    toggleBtn.textContent = "Restart";
     updateWinUI(true);
+    syncPauseLabel();
   }
 
   if (!isWin) {
@@ -629,7 +868,7 @@ function playSound(type) {
 
 function setSoundEnabled(enabled) {
   soundEnabled = enabled;
-  soundBtn.textContent = `Sound: ${enabled ? "On" : "Off"}`;
+  syncSoundLabel();
   if (!enabled && audioCtx && audioCtx.state === "running") {
     audioCtx.suspend();
   }
@@ -675,10 +914,10 @@ function resetPlayer() {
     isGameOver = true;
     isPaused = true;
     statusEl.textContent = "Game Over";
-    toggleBtn.textContent = "Restart";
     updateGameOverUI(true);
     playSound("gameover");
     recordScore(score);
+    syncPauseLabel();
   }
 }
 
@@ -827,10 +1066,10 @@ function holdSwap() {
     isGameOver = true;
     isPaused = true;
     statusEl.textContent = "Game Over";
-    toggleBtn.textContent = "Restart";
     updateGameOverUI(true);
     playSound("gameover");
     recordScore(score);
+    syncPauseLabel();
   }
 }
 
@@ -1111,8 +1350,12 @@ function draw() {
   drawGhost();
   drawMatrix(player.matrix, player.pos, ctx, { animal: player.animal });
 
-  drawPreview(nextCtx, player.next);
-  drawPreview(holdCtx, holdPiece);
+  nextPreviewTargets.forEach(({ ctx: targetCtx }) => {
+    drawPreview(targetCtx, player.next);
+  });
+  holdPreviewTargets.forEach(({ ctx: targetCtx }) => {
+    drawPreview(targetCtx, holdPiece);
+  });
 }
 
 function update(time = 0) {
@@ -1147,7 +1390,7 @@ function togglePause() {
   hasStarted = true;
   isPaused = !isPaused;
   statusEl.textContent = isPaused ? "Paused" : "Playing";
-  toggleBtn.textContent = isPaused ? "Resume" : "Pause";
+  syncPauseLabel();
 }
 
 function resetGame() {
@@ -1177,7 +1420,7 @@ function resetGame() {
     applyTheme(themeForStage(stageIndex));
   }
   statusEl.textContent = "Playing";
-  toggleBtn.textContent = "Pause";
+  syncPauseLabel();
   updateStats();
   resetPlayer();
 }
@@ -1191,6 +1434,16 @@ function handleAction(action) {
       return;
     }
     togglePause();
+    return;
+  }
+
+  if (action === "reset") {
+    resetGame();
+    return;
+  }
+
+  if (action === "sound") {
+    setSoundEnabled(!soundEnabled);
     return;
   }
 
@@ -1226,6 +1479,7 @@ function bindTouchButton(button) {
   const repeatable = action === "left" || action === "right" || action === "down";
   let repeatTimeout = null;
   let repeatInterval = null;
+  let ignoreClick = false;
 
   const clearTimers = () => {
     if (repeatTimeout) {
@@ -1238,28 +1492,64 @@ function bindTouchButton(button) {
     }
   };
 
+  const blockClick = () => {
+    ignoreClick = true;
+    window.setTimeout(() => {
+      ignoreClick = false;
+    }, 350);
+  };
+
+  const startRepeat = () => {
+    if (!repeatable) return;
+    repeatTimeout = setTimeout(() => {
+      repeatInterval = setInterval(() => {
+        handleAction(action);
+      }, REPEAT_INTERVAL);
+    }, REPEAT_DELAY);
+  };
+
   const onPointerDown = (event) => {
     if (!isTouchInput(event)) return;
     event.preventDefault();
+    blockClick();
     button.setPointerCapture?.(event.pointerId);
     handleAction(action);
-    if (repeatable) {
-      repeatTimeout = setTimeout(() => {
-        repeatInterval = setInterval(() => {
-          handleAction(action);
-        }, REPEAT_INTERVAL);
-      }, REPEAT_DELAY);
-    }
+    startRepeat();
   };
 
   const onPointerUp = () => {
     clearTimers();
   };
 
-  button.addEventListener("pointerdown", onPointerDown);
-  button.addEventListener("pointerup", onPointerUp);
-  button.addEventListener("pointercancel", onPointerUp);
-  button.addEventListener("pointerleave", onPointerUp);
+  const onTouchStart = (event) => {
+    if (event.touches.length > 1) return;
+    event.preventDefault();
+    blockClick();
+    handleAction(action);
+    startRepeat();
+  };
+
+  const onTouchEnd = () => {
+    clearTimers();
+  };
+
+  const onClick = () => {
+    if (ignoreClick) return;
+    handleAction(action);
+  };
+
+  if (supportsPointer) {
+    button.addEventListener("pointerdown", onPointerDown);
+    button.addEventListener("pointerup", onPointerUp);
+    button.addEventListener("pointercancel", onPointerUp);
+    button.addEventListener("pointerleave", onPointerUp);
+  } else {
+    button.addEventListener("touchstart", onTouchStart, { passive: false });
+    button.addEventListener("touchend", onTouchEnd);
+    button.addEventListener("touchcancel", onTouchEnd);
+  }
+
+  button.addEventListener("click", onClick);
   button.addEventListener("contextmenu", (event) => event.preventDefault());
 }
 
@@ -1281,21 +1571,50 @@ soundBtn.addEventListener("click", () => {
   setSoundEnabled(!soundEnabled);
 });
 
+if (soundToggleMobile) {
+  soundToggleMobile.addEventListener("change", (event) => {
+    setSoundEnabled(event.target.checked);
+  });
+}
+
 themeSelect.addEventListener("change", (event) => {
   if (themeMode !== "auto") {
     applyTheme(event.target.value);
   }
 });
 
+if (themeSelectMobile) {
+  themeSelectMobile.addEventListener("change", (event) => {
+    if (themeMode !== "auto") {
+      applyTheme(event.target.value);
+    }
+  });
+}
+
 themeAutoToggle.addEventListener("change", (event) => {
   setThemeMode(event.target.checked ? "auto" : "manual");
 });
+
+if (themeAutoMobile) {
+  themeAutoMobile.addEventListener("change", (event) => {
+    setThemeMode(event.target.checked ? "auto" : "manual");
+  });
+}
 
 if (gridToggle) {
   gridToggle.addEventListener("change", (event) => {
     setGridEnabled(event.target.checked);
   });
   gridToggle.addEventListener("input", (event) => {
+    setGridEnabled(event.target.checked);
+  });
+}
+
+if (gridToggleMobile) {
+  gridToggleMobile.addEventListener("change", (event) => {
+    setGridEnabled(event.target.checked);
+  });
+  gridToggleMobile.addEventListener("input", (event) => {
     setGridEnabled(event.target.checked);
   });
 }
@@ -1363,67 +1682,104 @@ if (touchButtons.length) {
   touchButtons.forEach((button) => bindTouchButton(button));
 }
 
+if (settingsBtn) {
+  settingsBtn.addEventListener("click", () => {
+    setSettingsOpen(true);
+  });
+}
+
+if (settingsClose) {
+  settingsClose.addEventListener("click", () => {
+    setSettingsOpen(false);
+  });
+}
+
+if (settingsDrawer) {
+  settingsDrawer.addEventListener("click", (event) => {
+    if (event.target === settingsDrawer) {
+      setSettingsOpen(false);
+    }
+  });
+}
+
 if (boardShell) {
-  boardShell.addEventListener("pointerdown", (event) => {
-    if (!isTouchInput(event)) return;
-    if (touchState.active) return;
-    event.preventDefault();
-    touchState.active = true;
-    touchState.pointerId = event.pointerId;
-    touchState.startX = event.clientX;
-    touchState.startY = event.clientY;
-    touchState.lastX = event.clientX;
-    touchState.lastY = event.clientY;
-    touchState.moved = false;
-    boardShell.setPointerCapture?.(event.pointerId);
-  });
+  if (supportsPointer) {
+    boardShell.addEventListener("pointerdown", (event) => {
+      if (!isTouchInput(event)) return;
+      event.preventDefault();
+      startTouchGesture(event.pointerId, event.clientX, event.clientY);
+      boardShell.setPointerCapture?.(event.pointerId);
+    });
 
-  boardShell.addEventListener("pointermove", (event) => {
-    if (!touchState.active || event.pointerId !== touchState.pointerId) return;
-    const dx = event.clientX - touchState.lastX;
-    const dy = event.clientY - touchState.lastY;
-    const absDx = Math.abs(dx);
-    const absDy = Math.abs(dy);
+    boardShell.addEventListener("pointermove", (event) => {
+      moveTouchGesture(event.pointerId, event.clientX, event.clientY);
+    });
 
-    if (absDx < SWIPE_THRESHOLD && absDy < SWIPE_THRESHOLD) return;
+    boardShell.addEventListener("pointerup", (event) => {
+      endTouchGesture(event.pointerId, event.clientX, event.clientY);
+    });
 
-    if (absDx > absDy) {
-      handleAction(dx > 0 ? "right" : "left");
-      touchState.lastX = event.clientX;
-      touchState.moved = true;
-      return;
-    }
+    boardShell.addEventListener("pointercancel", (event) => {
+      endTouchGesture(event.pointerId, event.clientX, event.clientY);
+    });
+  } else {
+    boardShell.addEventListener(
+      "touchstart",
+      (event) => {
+        if (event.touches.length !== 1) return;
+        event.preventDefault();
+        const touch = event.changedTouches[0];
+        startTouchGesture(touch.identifier, touch.clientX, touch.clientY);
+      },
+      { passive: false }
+    );
 
-    if (dy > 0) {
-      handleAction("down");
-      touchState.lastY = event.clientY;
-      touchState.moved = true;
-    }
-  });
+    boardShell.addEventListener(
+      "touchmove",
+      (event) => {
+        if (event.touches.length !== 1) return;
+        const touch = event.changedTouches[0];
+        moveTouchGesture(touch.identifier, touch.clientX, touch.clientY);
+      },
+      { passive: false }
+    );
 
-  boardShell.addEventListener("pointerup", (event) => {
-    if (!touchState.active || event.pointerId !== touchState.pointerId) return;
-    const dx = event.clientX - touchState.startX;
-    const dy = event.clientY - touchState.startY;
-    const distance = Math.hypot(dx, dy);
-    if (!touchState.moved && distance < TAP_THRESHOLD) {
-      handleAction("rotate");
-    }
-    touchState.active = false;
-    touchState.pointerId = null;
-  });
+    boardShell.addEventListener("touchend", (event) => {
+      const touch = event.changedTouches[0];
+      if (!touch) return;
+      endTouchGesture(touch.identifier, touch.clientX, touch.clientY);
+    });
 
-  boardShell.addEventListener("pointercancel", (event) => {
-    if (event.pointerId !== touchState.pointerId) return;
-    touchState.active = false;
-    touchState.pointerId = null;
-  });
+    boardShell.addEventListener("touchcancel", (event) => {
+      const touch = event.changedTouches[0];
+      if (!touch) return;
+      endTouchGesture(touch.identifier, touch.clientX, touch.clientY);
+    });
+  }
 
   boardShell.addEventListener("contextmenu", (event) => event.preventDefault());
 }
 
 window.addEventListener("resize", () => {
   resizeCanvases();
+});
+
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", resizeCanvases);
+  window.visualViewport.addEventListener("scroll", resizeCanvases);
+}
+
+preventPinchZoom(document);
+preventDoubleTapZoom(document);
+["gesturestart", "gesturechange", "gestureend"].forEach((eventName) => {
+  document.addEventListener(
+    eventName,
+    (event) => {
+      if (document.body.dataset.input !== "touch") return;
+      event.preventDefault();
+    },
+    { passive: false }
+  );
 });
 
 detectInputMode();
@@ -1439,8 +1795,10 @@ themeSelect.value = savedTheme;
 setThemeMode(savedMode);
 updateThemeTokens();
 setGridEnabled(gridEnabled);
+syncThemeControls(savedTheme);
 
 updateStats();
 setSoundEnabled(soundEnabled);
+syncPauseLabel();
 draw();
 update();

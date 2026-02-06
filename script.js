@@ -4,6 +4,14 @@ const nextCanvas = document.getElementById("next");
 const nextCtx = nextCanvas.getContext("2d");
 const holdCanvas = document.getElementById("hold");
 const holdCtx = holdCanvas.getContext("2d");
+const nextMobileCanvas = document.getElementById("nextMobile");
+const nextMobileCtx = nextMobileCanvas
+  ? nextMobileCanvas.getContext("2d")
+  : null;
+const holdMobileCanvas = document.getElementById("holdMobile");
+const holdMobileCtx = holdMobileCanvas
+  ? holdMobileCanvas.getContext("2d")
+  : null;
 
 const scoreEl = document.getElementById("score");
 const linesEl = document.getElementById("lines");
@@ -22,15 +30,20 @@ const statusEl = document.getElementById("statusText");
 const toggleBtn = document.getElementById("toggleBtn");
 const resetBtn = document.getElementById("resetBtn");
 const soundBtn = document.getElementById("soundBtn");
+const settingsBtn = document.getElementById("settingsBtn");
+const settingsDrawer = document.getElementById("settingsDrawer");
+const settingsClose = document.getElementById("settingsClose");
 const themeSelect = document.getElementById("themeSelect");
 const themeAutoToggle = document.getElementById("themeAuto");
 const gridToggle = document.getElementById("gridToggle");
-const touchButtons = document.querySelectorAll(".touch-controls [data-action]");
+const soundToggleMobile = document.getElementById("soundToggleMobile");
+const themeSelectMobile = document.getElementById("themeSelectMobile");
+const themeAutoMobile = document.getElementById("themeAutoMobile");
+const gridToggleMobile = document.getElementById("gridToggleMobile");
+const highScoreListMobileEl = document.getElementById("highScoreListMobile");
+const touchButtons = document.querySelectorAll("[data-action]");
 const touchPauseBtn = document.querySelector(
-  '.touch-controls [data-action="pause"]'
-);
-const touchSoundBtn = document.querySelector(
-  '.touch-controls [data-action="sound"]'
+  '.device-meta [data-action="pause"]'
 );
 
 const COLS = 10;
@@ -149,9 +162,25 @@ let themeTokens = {
   ghostAlpha: 0.12,
   wireframe: false,
 };
+let gesturesEnabled = false;
 
 const touchMedia = window.matchMedia("(pointer: coarse)");
 const supportsPointer = "PointerEvent" in window;
+const nextPreviewTargets = [];
+const holdPreviewTargets = [];
+
+if (nextCanvas && nextCtx) {
+  nextPreviewTargets.push({ canvas: nextCanvas, ctx: nextCtx });
+}
+if (nextMobileCanvas && nextMobileCtx) {
+  nextPreviewTargets.push({ canvas: nextMobileCanvas, ctx: nextMobileCtx });
+}
+if (holdCanvas && holdCtx) {
+  holdPreviewTargets.push({ canvas: holdCanvas, ctx: holdCtx });
+}
+if (holdMobileCanvas && holdMobileCtx) {
+  holdPreviewTargets.push({ canvas: holdMobileCanvas, ctx: holdMobileCtx });
+}
 const touchState = {
   active: false,
   pointerId: null,
@@ -262,6 +291,9 @@ function applyTheme(themeName) {
   document.body.dataset.theme = themeName;
   localStorage.setItem(THEME_KEY, themeName);
   themeSelect.value = themeName;
+  if (themeSelectMobile) {
+    themeSelectMobile.value = themeName;
+  }
   updateThemeTokens();
   themeDirty = false;
 }
@@ -271,6 +303,9 @@ function setGridEnabled(enabled) {
   localStorage.setItem(GRID_KEY, enabled ? "true" : "false");
   if (gridToggle) {
     gridToggle.checked = enabled;
+  }
+  if (gridToggleMobile) {
+    gridToggleMobile.checked = enabled;
   }
 }
 
@@ -306,8 +341,34 @@ function syncPauseLabel() {
 function syncSoundLabel() {
   const label = `Sound: ${soundEnabled ? "On" : "Off"}`;
   soundBtn.textContent = label;
-  if (touchSoundBtn) {
-    touchSoundBtn.textContent = label;
+  if (soundToggleMobile) {
+    soundToggleMobile.checked = soundEnabled;
+  }
+}
+
+function syncThemeControls(themeName) {
+  const currentTheme = themeName || themeSelect.value || "minimal";
+  themeSelect.value = currentTheme;
+  if (themeSelectMobile) {
+    themeSelectMobile.value = currentTheme;
+  }
+  if (themeAutoMobile) {
+    themeAutoMobile.checked = themeMode === "auto";
+  }
+  if (themeSelectMobile) {
+    themeSelectMobile.disabled = themeMode === "auto";
+  }
+  if (gridToggleMobile) {
+    gridToggleMobile.checked = gridEnabled;
+  }
+}
+
+function setSettingsOpen(open) {
+  if (!settingsDrawer) return;
+  document.body.classList.toggle("settings-open", open);
+  settingsDrawer.setAttribute("aria-hidden", open ? "false" : "true");
+  if (settingsBtn) {
+    settingsBtn.setAttribute("aria-expanded", open ? "true" : "false");
   }
 }
 
@@ -320,6 +381,12 @@ function setThemeMode(mode) {
   localStorage.setItem(THEME_MODE_KEY, mode);
   themeAutoToggle.checked = mode === "auto";
   themeSelect.disabled = mode === "auto";
+  if (themeAutoMobile) {
+    themeAutoMobile.checked = mode === "auto";
+  }
+  if (themeSelectMobile) {
+    themeSelectMobile.disabled = mode === "auto";
+  }
 
   if (mode === "auto") {
     applyTheme(themeForStage(stageIndex));
@@ -343,15 +410,20 @@ function configureCanvas(canvasEl, context, width, height, scale) {
 
 function getAvailableBoardHeight() {
   if (!boardShell) return null;
-  const boardContainer = boardShell.parentElement;
-  if (!boardContainer) return null;
-  const hint = boardContainer.querySelector(".hint");
-  const controls = boardContainer.querySelector(".controls");
-  const touchControls = boardContainer.querySelector(".touch-controls");
+  const boardSection = boardShell.closest(".board");
+  if (!boardSection) return null;
+  const hint = boardSection.querySelector(".hint");
+  const controls = boardSection.querySelector(".controls");
+  const device = boardSection.querySelector(".device");
+  const deviceMeta = device ? device.querySelector(".device-meta") : null;
+  const deviceControls = device ? device.querySelector(".device-controls") : null;
   const hintHeight = hint ? hint.getBoundingClientRect().height : 0;
   const controlsHeight = controls ? controls.getBoundingClientRect().height : 0;
-  const touchControlsHeight = touchControls
-    ? touchControls.getBoundingClientRect().height
+  const deviceMetaHeight = deviceMeta
+    ? deviceMeta.getBoundingClientRect().height
+    : 0;
+  const deviceControlsHeight = deviceControls
+    ? deviceControls.getBoundingClientRect().height
     : 0;
   const rect = boardShell.getBoundingClientRect();
   const spacing = 24;
@@ -362,19 +434,29 @@ function getAvailableBoardHeight() {
     rect.top -
     hintHeight -
     controlsHeight -
-    touchControlsHeight -
+    deviceMetaHeight -
+    deviceControlsHeight -
     spacing;
   return available > 0 ? available : null;
 }
 
 function resizeCanvases() {
   const rect = canvas.getBoundingClientRect();
-  const containerWidth = canvas.parentElement
-    ? canvas.parentElement.clientWidth
-    : rect.width;
+  const boardRow = boardShell ? boardShell.parentElement : null;
+  const containerWidth = boardRow ? boardRow.clientWidth : rect.width;
   if (!rect.width && !containerWidth) return;
 
-  const maxBoardWidth = Math.min(containerWidth || rect.width, 360);
+  const mobileHud = boardRow ? boardRow.querySelector(".mobile-hud") : null;
+  const hudVisible =
+    mobileHud && getComputedStyle(mobileHud).display !== "none";
+  const hudWidth = hudVisible ? mobileHud.getBoundingClientRect().width : 0;
+  const rowGap = hudVisible ? 16 : 0;
+  const usableWidth =
+    containerWidth - hudWidth - rowGap > 0
+      ? containerWidth - hudWidth - rowGap
+      : containerWidth;
+
+  const maxBoardWidth = Math.min(usableWidth || rect.width, 360);
   let maxBlockSize = Math.floor(maxBoardWidth / COLS);
   const availableHeight = getAvailableBoardHeight();
   if (availableHeight) {
@@ -389,9 +471,29 @@ function resizeCanvases() {
 
   previewBlock = Math.max(10, Math.floor(blockSize * 0.9));
   const previewSize = previewBlock * PREVIEW_SIZE;
+  const mobilePreviewBlock = Math.max(8, Math.floor(blockSize * 0.7));
+  const mobilePreviewSize = mobilePreviewBlock * PREVIEW_SIZE;
 
   configureCanvas(nextCanvas, nextCtx, previewSize, previewSize, previewBlock);
   configureCanvas(holdCanvas, holdCtx, previewSize, previewSize, previewBlock);
+  if (nextMobileCanvas && nextMobileCtx) {
+    configureCanvas(
+      nextMobileCanvas,
+      nextMobileCtx,
+      mobilePreviewSize,
+      mobilePreviewSize,
+      mobilePreviewBlock
+    );
+  }
+  if (holdMobileCanvas && holdMobileCtx) {
+    configureCanvas(
+      holdMobileCanvas,
+      holdMobileCtx,
+      mobilePreviewSize,
+      mobilePreviewSize,
+      mobilePreviewBlock
+    );
+  }
 }
 
 function setInputMode(mode) {
@@ -401,7 +503,13 @@ function setInputMode(mode) {
 function detectInputMode() {
   const hasTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
   const isCoarse = touchMedia.matches;
-  setInputMode(hasTouch || isCoarse ? "touch" : "keyboard");
+  const isNarrow = window.matchMedia("(max-width: 900px)").matches;
+  const mode = hasTouch || isCoarse || isNarrow ? "touch" : "keyboard";
+  setInputMode(mode);
+  gesturesEnabled = false;
+  if (mode !== "touch") {
+    setSettingsOpen(false);
+  }
   resizeCanvases();
   requestAnimationFrame(resizeCanvases);
 }
@@ -412,6 +520,7 @@ function isTouchInput(event) {
 }
 
 function startTouchGesture(pointerId, clientX, clientY) {
+  if (!gesturesEnabled) return;
   if (touchState.active) return;
   touchState.active = true;
   touchState.pointerId = pointerId;
@@ -423,6 +532,7 @@ function startTouchGesture(pointerId, clientX, clientY) {
 }
 
 function moveTouchGesture(pointerId, clientX, clientY) {
+  if (!gesturesEnabled) return;
   if (!touchState.active || pointerId !== touchState.pointerId) return;
   const dx = clientX - touchState.lastX;
   const dy = clientY - touchState.lastY;
@@ -446,6 +556,7 @@ function moveTouchGesture(pointerId, clientX, clientY) {
 }
 
 function endTouchGesture(pointerId, clientX, clientY) {
+  if (!gesturesEnabled) return;
   if (!touchState.active || pointerId !== touchState.pointerId) return;
   const dx = clientX - touchState.startX;
   const dy = clientY - touchState.startY;
@@ -455,6 +566,33 @@ function endTouchGesture(pointerId, clientX, clientY) {
   }
   touchState.active = false;
   touchState.pointerId = null;
+}
+
+function preventPinchZoom(target) {
+  const onTouch = (event) => {
+    if (document.body.dataset.input !== "touch") return;
+    if (event.touches && event.touches.length > 1) {
+      event.preventDefault();
+    }
+  };
+  target.addEventListener("touchstart", onTouch, { passive: false });
+  target.addEventListener("touchmove", onTouch, { passive: false });
+}
+
+function preventDoubleTapZoom(target) {
+  let lastTap = 0;
+  target.addEventListener(
+    "touchend",
+    (event) => {
+      if (document.body.dataset.input !== "touch") return;
+      const now = Date.now();
+      if (now - lastTap < 300) {
+        event.preventDefault();
+      }
+      lastTap = now;
+    },
+    { passive: false }
+  );
 }
 
 function loadHighScores() {
@@ -476,12 +614,21 @@ function saveHighScores(scores) {
 
 function renderHighScores() {
   highScoreListEl.innerHTML = "";
+  if (highScoreListMobileEl) {
+    highScoreListMobileEl.innerHTML = "";
+  }
 
   if (highScores.length === 0) {
     const item = document.createElement("li");
     item.textContent = "—";
     item.classList.add("muted");
     highScoreListEl.appendChild(item);
+    if (highScoreListMobileEl) {
+      const mobileItem = document.createElement("li");
+      mobileItem.textContent = "—";
+      mobileItem.classList.add("muted");
+      highScoreListMobileEl.appendChild(mobileItem);
+    }
     return;
   }
 
@@ -489,6 +636,11 @@ function renderHighScores() {
     const item = document.createElement("li");
     item.textContent = value.toString();
     highScoreListEl.appendChild(item);
+    if (highScoreListMobileEl) {
+      const mobileItem = document.createElement("li");
+      mobileItem.textContent = value.toString();
+      highScoreListMobileEl.appendChild(mobileItem);
+    }
   });
 }
 
@@ -1198,8 +1350,12 @@ function draw() {
   drawGhost();
   drawMatrix(player.matrix, player.pos, ctx, { animal: player.animal });
 
-  drawPreview(nextCtx, player.next);
-  drawPreview(holdCtx, holdPiece);
+  nextPreviewTargets.forEach(({ ctx: targetCtx }) => {
+    drawPreview(targetCtx, player.next);
+  });
+  holdPreviewTargets.forEach(({ ctx: targetCtx }) => {
+    drawPreview(targetCtx, holdPiece);
+  });
 }
 
 function update(time = 0) {
@@ -1415,21 +1571,50 @@ soundBtn.addEventListener("click", () => {
   setSoundEnabled(!soundEnabled);
 });
 
+if (soundToggleMobile) {
+  soundToggleMobile.addEventListener("change", (event) => {
+    setSoundEnabled(event.target.checked);
+  });
+}
+
 themeSelect.addEventListener("change", (event) => {
   if (themeMode !== "auto") {
     applyTheme(event.target.value);
   }
 });
 
+if (themeSelectMobile) {
+  themeSelectMobile.addEventListener("change", (event) => {
+    if (themeMode !== "auto") {
+      applyTheme(event.target.value);
+    }
+  });
+}
+
 themeAutoToggle.addEventListener("change", (event) => {
   setThemeMode(event.target.checked ? "auto" : "manual");
 });
+
+if (themeAutoMobile) {
+  themeAutoMobile.addEventListener("change", (event) => {
+    setThemeMode(event.target.checked ? "auto" : "manual");
+  });
+}
 
 if (gridToggle) {
   gridToggle.addEventListener("change", (event) => {
     setGridEnabled(event.target.checked);
   });
   gridToggle.addEventListener("input", (event) => {
+    setGridEnabled(event.target.checked);
+  });
+}
+
+if (gridToggleMobile) {
+  gridToggleMobile.addEventListener("change", (event) => {
+    setGridEnabled(event.target.checked);
+  });
+  gridToggleMobile.addEventListener("input", (event) => {
     setGridEnabled(event.target.checked);
   });
 }
@@ -1495,6 +1680,26 @@ document.addEventListener("keydown", (event) => {
 
 if (touchButtons.length) {
   touchButtons.forEach((button) => bindTouchButton(button));
+}
+
+if (settingsBtn) {
+  settingsBtn.addEventListener("click", () => {
+    setSettingsOpen(true);
+  });
+}
+
+if (settingsClose) {
+  settingsClose.addEventListener("click", () => {
+    setSettingsOpen(false);
+  });
+}
+
+if (settingsDrawer) {
+  settingsDrawer.addEventListener("click", (event) => {
+    if (event.target === settingsDrawer) {
+      setSettingsOpen(false);
+    }
+  });
 }
 
 if (boardShell) {
@@ -1564,6 +1769,19 @@ if (window.visualViewport) {
   window.visualViewport.addEventListener("scroll", resizeCanvases);
 }
 
+preventPinchZoom(document);
+preventDoubleTapZoom(document);
+["gesturestart", "gesturechange", "gestureend"].forEach((eventName) => {
+  document.addEventListener(
+    eventName,
+    (event) => {
+      if (document.body.dataset.input !== "touch") return;
+      event.preventDefault();
+    },
+    { passive: false }
+  );
+});
+
 detectInputMode();
 if (touchMedia.addEventListener) {
   touchMedia.addEventListener("change", detectInputMode);
@@ -1577,6 +1795,7 @@ themeSelect.value = savedTheme;
 setThemeMode(savedMode);
 updateThemeTokens();
 setGridEnabled(gridEnabled);
+syncThemeControls(savedTheme);
 
 updateStats();
 setSoundEnabled(soundEnabled);

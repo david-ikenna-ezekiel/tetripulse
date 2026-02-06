@@ -762,6 +762,7 @@ function updateStageProgress(cleared) {
     statusEl.textContent = "You Won!!";
     updateWinUI(true);
     syncPauseLabel();
+    playSound("win");
   }
 
   if (!isWin) {
@@ -834,6 +835,12 @@ function playTone(frequency, duration, type, gainValue) {
 function playSound(type) {
   if (!soundEnabled) return;
   switch (type) {
+    case "start":
+      playTone(520, 0.08, "triangle", 0.05);
+      window.setTimeout(() => {
+        playTone(780, 0.08, "triangle", 0.045);
+      }, 70);
+      break;
     case "move":
       playTone(320, 0.05, "triangle", 0.04);
       break;
@@ -855,11 +862,26 @@ function playSound(type) {
     case "gameover":
       playTone(140, 0.2, "sine", 0.07);
       break;
+    case "pause":
+      playTone(260, 0.08, "triangle", 0.04);
+      break;
+    case "resume":
+      playTone(380, 0.06, "triangle", 0.045);
+      break;
     case "stage":
       playTone(480, 0.12, "triangle", 0.05);
       window.setTimeout(() => {
         playTone(660, 0.12, "triangle", 0.04);
       }, 90);
+      break;
+    case "win":
+      playTone(520, 0.12, "triangle", 0.05);
+      window.setTimeout(() => {
+        playTone(780, 0.12, "triangle", 0.05);
+      }, 90);
+      window.setTimeout(() => {
+        playTone(1040, 0.14, "triangle", 0.045);
+      }, 180);
       break;
     default:
       break;
@@ -869,8 +891,15 @@ function playSound(type) {
 function setSoundEnabled(enabled) {
   soundEnabled = enabled;
   syncSoundLabel();
-  if (!enabled && audioCtx && audioCtx.state === "running") {
-    audioCtx.suspend();
+  if (!enabled) {
+    if (audioCtx && audioCtx.state === "running") {
+      audioCtx.suspend();
+    }
+    return;
+  }
+  ensureAudio();
+  if (audioCtx && audioCtx.state === "suspended") {
+    audioCtx.resume();
   }
 }
 
@@ -1391,9 +1420,11 @@ function togglePause() {
   isPaused = !isPaused;
   statusEl.textContent = isPaused ? "Paused" : "Playing";
   syncPauseLabel();
+  playSound(isPaused ? "pause" : "resume");
 }
 
 function resetGame() {
+  const wasStarted = hasStarted;
   if (hasStarted && !isGameOver) {
     finalizeScore();
   }
@@ -1423,6 +1454,9 @@ function resetGame() {
   syncPauseLabel();
   updateStats();
   resetPlayer();
+  if (!wasStarted) {
+    playSound("start");
+  }
 }
 
 function handleAction(action) {
@@ -1573,6 +1607,9 @@ soundBtn.addEventListener("click", () => {
 
 if (soundToggleMobile) {
   soundToggleMobile.addEventListener("change", (event) => {
+    if (event.target.checked) {
+      ensureAudio();
+    }
     setSoundEnabled(event.target.checked);
   });
 }
@@ -1771,6 +1808,14 @@ if (window.visualViewport) {
 
 preventPinchZoom(document);
 preventDoubleTapZoom(document);
+document.addEventListener(
+  "dblclick",
+  (event) => {
+    if (document.body.dataset.input !== "touch") return;
+    event.preventDefault();
+  },
+  { passive: false }
+);
 ["gesturestart", "gesturechange", "gestureend"].forEach((eventName) => {
   document.addEventListener(
     eventName,

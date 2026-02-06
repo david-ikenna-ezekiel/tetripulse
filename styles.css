@@ -278,6 +278,11 @@ body {
   font-family: var(--font-body);
 }
 
+html,
+body {
+  -webkit-text-size-adjust: 100%;
+}
+
 .wrap {
   max-width: 920px;
   margin: 0 auto;
@@ -893,6 +898,7 @@ body[data-input="touch"] {
   overscroll-behavior: none;
   height: 100svh;
   overflow: hidden;
+  touch-action: none;
 }
 
 body[data-input="touch"] .settings-btn {
